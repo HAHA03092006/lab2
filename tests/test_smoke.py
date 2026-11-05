@@ -31,6 +31,29 @@ def test_flat_imports_available():
     assert callable(going_modular.get_device)
 
 
+def test_contract_14_exports():
+    """Kiểm tra 14 symbols xuất phẳng theo hợp đồng 00_lab2_description.md mục 2.8.6."""
+    contract_14 = [
+        "ModelConfig",
+        "build_model",
+        "get_transforms",
+        "count_params",
+        "describe_model",
+        "set_train_mode",
+        "get_param_groups",
+        "create_train_val_test_dataloaders",
+        "train",
+        "evaluate_step",
+        "set_seed",
+        "get_device",
+        "run_inference",
+        "evaluate_predictions",
+    ]
+    for name in contract_14:
+        assert name in going_modular.__all__, f'{name} không có trong __all__'
+        assert hasattr(going_modular, name), f'{name} không thể import từ going_modular'
+
+
 def test_set_seed_reproducible():
     """Kiểm tra set_seed tạo lại cùng dãy số trên cùng môi trường."""
     going_modular.set_seed(42)

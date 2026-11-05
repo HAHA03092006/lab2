@@ -6,6 +6,5 @@ pillow
 pytest
 tensorboard
 torch
-torchinfo
 torchvision
 tqdm
