@@ -1,13 +1,9 @@
 """
-Training engine: train_step, evaluate_step, train loop, and eval_model.
+Training engine: train_step, evaluate_step, train loop.
 
 Phase 5: canonical API with train_mode_fn, 6-key history,
 checkpoint resume, atomic persistence via utils.py, and TensorBoard
 tag/step conventions per docs/define&designt/03_engine.md.
-
-Backward-compatible kwargs (checkpoint_path, frozen_backbone, verbose)
-are kept for existing notebook call sites; notebook migration to the new
-contract is scheduled for Phase 7.
 """
 from __future__ import annotations
 
@@ -17,7 +13,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 from torch import nn, optim
-from tqdm.auto import tqdm
 
 from going_modular import utils
 
@@ -117,9 +112,6 @@ def train(
     checkpoint_dir: Optional[str] = None,
     resume: bool = False,
     expected_phase_config: Optional[Dict[str, Any]] = None,
-    # --- Deprecated / backward-compatible kwargs -----------------------------
-    checkpoint_path: Optional[str] = None,
-    frozen_backbone: Optional[nn.Module] = None,
     verbose: bool = True,
 ) -> Dict[str, List]:
     """Multi-epoch training loop with best-checkpoint selection and resume.
@@ -127,19 +119,6 @@ def train(
     History keys: train_loss, val_loss, train_acc, val_acc, lr, epoch_time.
     Each key holds one entry per completed epoch.
     """
-    # ---- Resolve deprecated aliases --------------------------------------
-    if checkpoint_path is not None and save_path is None:
-        save_path = checkpoint_path
-
-    if frozen_backbone is not None and train_mode_fn is None:
-        _fb = frozen_backbone
-
-        def _default_train_mode_fn(m: nn.Module) -> None:
-            m.train()
-            _fb.eval()
-
-        train_mode_fn = _default_train_mode_fn
-
     # ---- Validate inputs --------------------------------------------------
     if epochs <= 0:
         raise ValueError(f"epochs must be positive; got {epochs}.")
@@ -244,7 +223,7 @@ def train(
             if save_path is not None:
                 save_p = Path(save_path)
                 save_p.parent.mkdir(parents=True, exist_ok=True)
-                torch.save(model.state_dict(), save_p)
+                utils.save_model(model, str(save_p))
 
         # Checkpoint + history persistence (atomic via utils)
         if checkpoint_dir is not None:
@@ -278,23 +257,3 @@ def train(
         model.load_state_dict(torch.load(save_path, map_location=device_t))
 
     return history
-
-
-# ---------------------------------------------------------------------------
-# Quick evaluation helper
-# ---------------------------------------------------------------------------
-
-def eval_model(
-    model: nn.Module,
-    dataloader: torch.utils.data.DataLoader,
-    loss_fn: nn.Module,
-    device: torch.device | str = "cpu",
-) -> Dict[str, object]:
-    """Evaluate model on a dataloader; returns summary dict."""
-    model.to(device)
-    loss, acc = evaluate_step(model, dataloader, loss_fn, device)
-    return {
-        "model_name": model.__class__.__name__,
-        "model_loss": round(loss, 4),
-        "model_acc": round(acc, 4),
-    }

@@ -139,7 +139,7 @@ def test_u4_model_state_dict_roundtrip(tmp_path):
         out_before = model(x)
 
     path = tmp_path / "model.pth"
-    save_model(model, str(tmp_path), "model.pth")
+    save_model(model, str(path))
 
     model2 = TinyModel()
     load_model(model2, str(path), device="cpu")
@@ -153,17 +153,25 @@ def test_u4_model_state_dict_roundtrip(tmp_path):
 # U5: Atomic write failure keeps original and cleans temp
 # ---------------------------------------------------------------------------
 
-def test_u5_atomic_write_keeps_original_on_failure(tmp_path):
-    """U5: Giả lập lỗi giữa atomic write → file đích còn nguyên, không còn file tạm."""
+def test_u5_atomic_write_keeps_original_on_failure(tmp_path, monkeypatch):
+    """U5: Giả lập os.replace lỗi sau khi temp đã ghi → file đích nguyên vẹn, temp dọn, lỗi truyền lên."""
     target = Path(tmp_path) / "config.json"
     target.write_text('{"original": true}', encoding="utf-8")
 
-    with patch.object(utils, "_atomic_write_json", side_effect=OSError("disk full")):
-        with pytest.raises(OSError):
-            save_config(tmp_path, {"new": True})
+    original_replace = os.replace
+
+    def failing_replace(src, dst):
+        raise OSError("disk full on replace")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    with pytest.raises(OSError, match="disk full on replace"):
+        save_config(tmp_path, {"new": True})
 
     assert target.read_text(encoding="utf-8") == '{"original": true}'
-    assert not list(Path(tmp_path).glob("*.tmp"))
+    # Temp file phải được dọn sạch
+    tmp_files = list(Path(tmp_path).glob("*.tmp"))
+    assert len(tmp_files) == 0, f"Temp files còn lại: {tmp_files}"
 
 
 # ---------------------------------------------------------------------------

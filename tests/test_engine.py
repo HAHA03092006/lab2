@@ -401,7 +401,7 @@ def test_e13_resume_config_mismatch_rejected(tmp_path):
 
 
 def test_e14_atomic_interruption_checkpoint(tmp_path, monkeypatch):
-    """E14: Ghi lỗi checkpoint → file cũ không hỏng, không có file tạm."""
+    """E14: os.replace lỗi khi lưu checkpoint → file cũ nguyên vẹn, temp dọn, lỗi truyền lên."""
     model = make_toy_model()
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=1e-3)
@@ -418,26 +418,27 @@ def test_e14_atomic_interruption_checkpoint(tmp_path, monkeypatch):
     assert ckpt_path.is_file()
     original_bytes = ckpt_path.read_bytes()
 
-    original_save = utils.save_checkpoint
+    # Inject os.replace failure during real save_checkpoint
+    original_replace = os.replace
 
-    def failing_save_checkpoint(*args, **kwargs):
-        raise OSError("disk full")
+    def failing_replace(src, dst):
+        raise OSError("disk full on replace")
 
-    monkeypatch.setattr(utils, "save_checkpoint", failing_save_checkpoint)
+    monkeypatch.setattr(os, "replace", failing_replace)
 
     shutil.copytree(ckpt_dir, tmp_path / "artifacts_atomic_copy")
     ckpt_dir2 = tmp_path / "artifacts_atomic_copy"
 
     model2 = make_toy_model()
     optimizer2 = optim.SGD(model2.parameters(), lr=1e-3)
-    with pytest.raises(OSError):
+    with pytest.raises(OSError, match="disk full on replace"):
         train(model2, train_dl, val_dl, optimizer2, loss_fn,
               epochs=3, device=torch.device("cpu"),
               checkpoint_dir=str(ckpt_dir2), resume=True, verbose=False)
 
     assert (ckpt_dir2 / "last_checkpoint.pth").read_bytes() == original_bytes
     tmp_files = list(ckpt_dir2.glob("*.tmp"))
-    assert len(tmp_files) == 0
+    assert len(tmp_files) == 0, f"Temp files còn lại: {tmp_files}"
 
 
 def test_e15_monitor_val_loss_selects_min(tmp_path):
@@ -489,28 +490,28 @@ def test_e16_timing_and_history_lr():
 
 
 # ---------------------------------------------------------------------------
-# Backward compatibility: deprecated kwargs
+# New API: save_path and train_mode_fn
 # ---------------------------------------------------------------------------
 
-def test_backward_compat_checkpoint_path(tmp_path):
-    """checkpoint_path (đại diện cũ) được ánh xạ sang save_path."""
+def test_save_path_saves_best_model(tmp_path):
+    """save_path (API mới) lưu best model checkpoint."""
     model = make_toy_model()
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=1e-3)
     train_dl = make_toy_loader(n_samples=20, batch_size=5)
     val_dl = make_toy_loader(n_samples=10, batch_size=5, seed=1)
 
-    ckpt_path = os.path.join(tmp_path, "best_legacy.pth")
+    ckpt_path = os.path.join(tmp_path, "best_new.pth")
 
     train(model, train_dl, val_dl, optimizer, loss_fn,
           epochs=2, device=torch.device("cpu"),
-          checkpoint_path=ckpt_path, verbose=False)
+          save_path=ckpt_path, verbose=False)
 
     assert os.path.isfile(ckpt_path)
 
 
-def test_backward_compat_frozen_backbone(tmp_path):
-    """frozen_backbone (đại diện cũ) tạo train_mode_fn mặc định."""
+def test_train_mode_fn_keeps_backbone_eval(tmp_path):
+    """train_mode_fn (API mới) có thể giữ backbone ở eval trong quá trình train."""
     model = make_toy_model()
     backbone = nn.Linear(4, 4)
     for p in backbone.parameters():
@@ -523,6 +524,7 @@ def test_backward_compat_frozen_backbone(tmp_path):
 
     train(model, train_dl, val_dl, optimizer, loss_fn,
           epochs=1, device=torch.device("cpu"),
-          frozen_backbone=backbone, verbose=False)
+          train_mode_fn=lambda m: setattr(m, 'training', True) or backbone.eval(),
+          verbose=False)
 
     assert backbone.training is False

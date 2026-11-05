@@ -2,109 +2,20 @@
 
 Phase 2: configuration-driven model builder with ModelConfig, ARCH_SPECS
 registry, build_model, get_transforms, set_train_mode, get_param_groups,
-count_params and describe_model. Legacy wrappers retained for backward
-compatibility with existing notebook call sites.
+count_params and describe_model.
 """
 
 from __future__ import annotations
 
-import torch
 from dataclasses import dataclass, fields
 from torch import nn
 from torchvision import models
 from torchvision.models import VGG16_Weights, ResNet18_Weights
 
 
-# ---------------------------------------------------------------------------
-# Legacy wrappers (kept for backward compatibility with notebook call sites)
-# ---------------------------------------------------------------------------
-
-class CIFAR10ModelV0(nn.Module):
-
-    def __init__(
-        self,
-        num_classes: int = 10,
-        freeze_backbone: bool = True,
-        pretrained: bool = True,
-    ) -> None:
-        super().__init__()
-        weights = VGG16_Weights.IMAGENET1K_V1 if pretrained else None
-        self.model = models.vgg16(weights=weights)
-
-        if freeze_backbone:
-            for param in self.model.parameters():
-                param.requires_grad = False
-
-        in_features = self.model.classifier[-1].in_features
-        self.model.classifier[-1] = nn.Linear(in_features, num_classes)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
-
-
-class CIFAR10ModelV1(nn.Module):
-
-    def __init__(
-        self,
-        num_classes: int = 10,
-        freeze_backbone: bool = True,
-        pretrained: bool = True,
-    ) -> None:
-        super().__init__()
-        weights = ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
-        self.model = models.resnet18(weights=weights)
-
-        if freeze_backbone:
-            for name, param in self.model.named_parameters():
-                if "fc" not in name:
-                    param.requires_grad = False
-
-        in_features = self.model.fc.in_features
-        self.model.fc = nn.Linear(in_features, num_classes)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
-
-
-MODEL_NAMES = ("v0", "v1")
-
-
-def build_model(
-    cfg_or_name,
-    num_classes: int = 10,
-    freeze_backbone: bool = True,
-    pretrained: bool = True,
-    **kwargs,
-) -> nn.Module:
-    """Create a classifier.
-
-    New API: ``build_model(ModelConfig(...))`` returns a torchvision model
-    directly (no wrapper).
-
-    Legacy API: ``build_model("v0" | "v1", ...)`` returns CIFAR10ModelV0/V1
-    wrapper for backward compatibility with existing notebooks.
-    """
-    if isinstance(cfg_or_name, ModelConfig):
-        return _build_model_from_config(cfg_or_name)
-
-    name = str(cfg_or_name).lower()
-    if name not in MODEL_NAMES:
-        raise ValueError(
-            f"Unknown model name '{name}'. Choose one of {MODEL_NAMES}."
-        )
-
-    if name == "v0":
-        return CIFAR10ModelV0(
-            num_classes=num_classes,
-            freeze_backbone=freeze_backbone,
-            pretrained=pretrained,
-        )
-
-    return CIFAR10ModelV1(
-        num_classes=num_classes,
-        freeze_backbone=freeze_backbone,
-        pretrained=pretrained,
-    )
+def build_model(cfg: ModelConfig) -> nn.Module:
+    """Xây dựng mô hình torchvision trực tiếp từ ModelConfig (không wrapper)."""
+    return _build_model_from_config(cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +75,13 @@ ARCH_SPECS: dict[str, dict] = {
         "get_head": lambda m: m.fc,
         "set_head": lambda m, h: setattr(m, "fc", h),
         "blocks": lambda m: [m.layer1, m.layer2, m.layer3, m.layer4],
+        "num_blocks": 4,
     },
     "vgg16": {
         "get_head": lambda m: m.classifier[6],
         "set_head": lambda m, h: setattr(m.classifier, "6", h),
         "blocks": _vgg16_conv_blocks,
+        "num_blocks": 5,
     },
 }
 
@@ -209,7 +122,7 @@ def _validate(cfg: ModelConfig) -> None:
         raise ValueError(
             f"dropout phải nằm trong [0, 1) (đã nhận {cfg.dropout})."
         )
-    num_blocks = len(ARCH_SPECS[cfg.arch]["blocks"](_dummy_model(cfg.arch)))
+    num_blocks = ARCH_SPECS[cfg.arch]["num_blocks"]
     if cfg.unfreeze_last_n > num_blocks:
         raise ValueError(
             f"unfreeze_last_n={cfg.unfreeze_last_n} vượt quá số khối của "
@@ -402,15 +315,3 @@ def describe_model(model: nn.Module, cfg: ModelConfig | None = None) -> str:
 def format_model_summary(model: nn.Module, cfg: ModelConfig | None = None) -> str:
     """Alias của describe_model (kept for naming flexibility)."""
     return describe_model(model, cfg)
-
-
-# ---------------------------------------------------------------------------
-# Legacy parameter counters (kept for backward compatibility)
-# ---------------------------------------------------------------------------
-
-def count_trainable_params(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-def count_total_params(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters())

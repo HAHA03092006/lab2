@@ -111,42 +111,6 @@ def get_env_info(device: torch.device) -> Dict[str, str]:
     return info
 
 
-# ---------------------------------------------------------------------------
-# Legacy utilities (kept for backward compatibility)
-# ---------------------------------------------------------------------------
-
-def accuracy_fn(y_true: torch.Tensor, y_pred: torch.Tensor) -> float:
-    """Calculates accuracy between true and predicted labels."""
-    correct = torch.eq(y_true, y_pred).sum().item()
-    return correct / len(y_pred)
-
-
-def print_train_time(start: float, end: float, device=None) -> float:
-    """Prints and returns the elapsed training time in seconds."""
-    total_time = end - start
-    print(f"Train time on {device}: {total_time:.3f} seconds")
-    return total_time
-
-
-def save_model(
-    model: torch.nn.Module, target_dir: str, model_name: str
-) -> Path:
-    """Saves a PyTorch model's state_dict to a target directory.
-
-    Legacy signature kept for backward compatibility.
-    """
-    target_dir_path = Path(target_dir)
-    target_dir_path.mkdir(parents=True, exist_ok=True)
-
-    if not (model_name.endswith(".pth") or model_name.endswith(".pt")):
-        raise ValueError("model_name should end with '.pt' or '.pth'")
-    model_save_path = target_dir_path / model_name
-
-    print(f"[INFO] Saving model to: {model_save_path}")
-    torch.save(obj=model.state_dict(), f=model_save_path)
-    return model_save_path
-
-
 def load_model(
     model: torch.nn.Module, model_path: str, device: str = "cpu"
 ) -> torch.nn.Module:
@@ -158,69 +122,6 @@ def load_model(
     state_dict = torch.load(f=model_path, map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
     return model.to(device)
-
-
-def save_training_metadata(
-    history: Dict[str, List[float]],
-    artifact_dir: str,
-    config: Dict[str, object],
-) -> Tuple[Path, Path]:
-    """Persist training curves and their configuration beside a model checkpoint.
-
-    Legacy function kept for backward compatibility. Validates the four
-    legacy history keys.
-    """
-    missing_keys = set(HISTORY_KEYS) - history.keys()
-    if missing_keys:
-        raise ValueError(f"Training history is missing keys: {sorted(missing_keys)}")
-    if not history["train_loss"]:
-        raise ValueError("Training history is empty; refusing to save incomplete results.")
-    if any(len(history[key]) != len(history["train_loss"]) for key in HISTORY_KEYS):
-        raise ValueError("All training history series must have the same number of epochs.")
-
-    artifact_path = Path(artifact_dir)
-    artifact_path.mkdir(parents=True, exist_ok=True)
-    history_path = artifact_path / "history.json"
-    config_path = artifact_path / "config.json"
-
-    _atomic_write_json(history_path, history)
-    _atomic_write_json(config_path, config)
-    return history_path, config_path
-
-
-def load_training_artifacts(
-    model: torch.nn.Module,
-    artifact_dir: str,
-    device: str = "cpu",
-) -> Tuple[torch.nn.Module, Dict[str, List[float]], Dict[str, object]]:
-    """Load a model checkpoint, its training curves, and saved run configuration.
-
-    Legacy function kept for backward compatibility.
-    """
-    artifact_path = Path(artifact_dir)
-    checkpoint_path = artifact_path / "best_model.pth"
-    history_path = artifact_path / "history.json"
-    config_path = artifact_path / "config.json"
-    required_paths = (checkpoint_path, history_path, config_path)
-    missing_paths = [str(path) for path in required_paths if not path.is_file()]
-    if missing_paths:
-        raise FileNotFoundError(
-            "Training artifacts are incomplete. Missing: "
-            + ", ".join(missing_paths)
-            + ". Run the notebook with RUN_MODE='train' first."
-        )
-
-    loaded_model = load_model(model, str(checkpoint_path), device=device)
-    history = json.loads(history_path.read_text(encoding="utf-8"))
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    missing_keys = set(HISTORY_KEYS) - history.keys()
-    if missing_keys:
-        raise ValueError(f"Saved history is missing keys: {sorted(missing_keys)}")
-    if not history["train_loss"]:
-        raise ValueError(f"Saved training history is empty: {history_path}")
-    if any(len(history[key]) != len(history["train_loss"]) for key in HISTORY_KEYS):
-        raise ValueError(f"Saved training history has inconsistent lengths: {history_path}")
-    return loaded_model, history, config
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +151,29 @@ def _atomic_write_json(path: Path, data: Any) -> None:
 def _read_json(path: Path) -> Any:
     """Read and parse a JSON file with UTF-8 encoding."""
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def save_model(model: torch.nn.Module, path: str) -> Path:
+    """Lưu state_dict của mô hình vào file ``path`` (atomic).
+
+    Args:
+        model: PyTorch model.
+        path: Đường dẫn file đích (ví dụ ``artifacts/run/best_model.pth``).
+
+    Returns:
+        Path của file đã lưu.
+    """
+    save_path = Path(path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = save_path.with_suffix(save_path.suffix + ".tmp")
+    try:
+        torch.save(obj=model.state_dict(), f=tmp_path)
+        os.replace(tmp_path, save_path)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
+    return save_path
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +332,14 @@ def save_checkpoint(
         "history": history,
         "phase_config": phase_config,
     }
-    torch.save(payload, checkpoint_path)
+    tmp_path = checkpoint_path.with_suffix(checkpoint_path.suffix + ".tmp")
+    try:
+        torch.save(payload, tmp_path)
+        os.replace(tmp_path, checkpoint_path)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
     return checkpoint_path
 
 

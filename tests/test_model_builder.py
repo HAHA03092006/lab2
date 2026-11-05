@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 import pytest
 from PIL import Image
+from unittest.mock import patch
 
 from going_modular.model_builder import (
     ModelConfig,
@@ -167,6 +168,35 @@ def test_t8b_invalid_values():
         build_model(ModelConfig(arch="resnet18", unfreeze_last_n=-1, weights=None))
     with pytest.raises(ValueError):
         build_model(ModelConfig(arch="resnet18", dropout=1.0, weights=None))
+
+
+def test_t8c_validate_no_model_construction_on_invalid_arch():
+    """T8c: invalid arch raises ValueError BEFORE any model is constructed."""
+    with patch("going_modular.model_builder._load_torchvision") as mock_load:
+        mock_load.side_effect = AssertionError("_load_torchvision should not be called during validation")
+        with pytest.raises(ValueError, match="Kiến trúc không hỗ trợ"):
+            build_model(ModelConfig(arch="not_a_model", weights=None))
+        mock_load.assert_not_called()
+
+
+def test_t8d_validate_no_model_construction_on_unfreeze_exceeds():
+    """T8d: unfreeze_last_n > num_blocks raises ValueError BEFORE any model is constructed."""
+    with patch("going_modular.model_builder._load_torchvision") as mock_load:
+        mock_load.side_effect = AssertionError("_load_torchvision should not be called during validation")
+        with pytest.raises(ValueError, match="vượt quá số khối"):
+            build_model(ModelConfig(arch="resnet18", unfreeze_last_n=5, weights=None))
+        mock_load.assert_not_called()
+
+
+def test_t8e_validate_no_model_construction_on_invalid_values():
+    """T8e: unfreeze_last_n<0 and dropout>=1 raise ValueError BEFORE any model is constructed."""
+    with patch("going_modular.model_builder._load_torchvision") as mock_load:
+        mock_load.side_effect = AssertionError("_load_torchvision should not be called during validation")
+        with pytest.raises(ValueError, match="không được âm"):
+            build_model(ModelConfig(arch="resnet18", unfreeze_last_n=-1, weights=None))
+        with pytest.raises(ValueError, match="phải nằm trong"):
+            build_model(ModelConfig(arch="resnet18", dropout=1.0, weights=None))
+        mock_load.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
