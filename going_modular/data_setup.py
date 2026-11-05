@@ -142,6 +142,7 @@ def create_train_val_test_dataloaders(
     val_size: int = 5000,
     seed: int = 42,
     num_workers: int = 0,
+    generator: Optional[torch.Generator] = None,
     download: bool = True,
     transform_model: Literal["vgg16", "resnet18"] = "vgg16",
 ) -> Tuple[DataLoader, DataLoader, DataLoader, List[str]]:
@@ -154,7 +155,7 @@ def create_train_val_test_dataloaders(
     """
     if train_transform is None:
         train_transform = get_pretrained_transform(
-            augment=False, model_name=transform_model
+            augment=True, model_name=transform_model
         )
     if eval_transform is None:
         eval_transform = get_pretrained_transform(
@@ -186,6 +187,7 @@ def create_train_val_test_dataloaders(
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        generator=generator,
     )
     val_dataloader = DataLoader(
         val_data,
