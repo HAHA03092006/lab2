@@ -39,7 +39,11 @@ lab2/
 │   └── <tên thí nghiệm>/              # Mỗi thí nghiệm một thư mục
 ├── runs/                              # Thư mục log TensorBoard (không commit)
 ├── tests/                             # Bộ kiểm thử tự động (conftest.py + test module)
-│   ├── conftest.py
+│   ├── test_data_setup.py
+│   ├── test_model_builder.py
+│   ├── test_engine.py
+│   ├── test_utils.py
+│   ├── test_evaluate.py
 │   └── test_smoke.py
 ├── docs/                              # Hệ thống tài liệu đặc tả thiết kế
 │   ├── define&designt/               # Define & Design Specs (00–05)
@@ -55,50 +59,95 @@ lab2/
 
 ---
 
-## 🚀 Hướng dẫn Cài đặt & Chạy
+## 🚀 Khởi tạo môi trường
 
-### 1. Chuẩn bị môi trường Python (Python 3.10+)
+Các lệnh dưới đây dành cho Windows PowerShell, chạy từ thư mục gốc của repository. Dự án yêu cầu Python 3.10 trở lên.
 
-Mở terminal tại thư mục gốc `lab2`:
+### Windows PowerShell
 
-```bash
-# Tạo môi trường ảo
+```powershell
+# Tạo môi trường ảo (chỉ cần chạy một lần)
 python -m venv .venv
 
-# Kích hoạt môi trường ảo:
-# Trên Windows PowerShell:
+# Kích hoạt môi trường ảo trong PowerShell
 .venv\Scripts\Activate.ps1
-# Trên Linux / macOS:
-# source .venv/bin/activate
 
-# Nâng cấp pip và cài đặt thư viện phụ thuộc
+# Nếu PowerShell chặn script kích hoạt, có thể bỏ qua kích hoạt và dùng
+# trực tiếp .venv\Scripts\python.exe trong các lệnh bên dưới.
+
+python --version
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-
-# Chạy smoke test để xác nhận môi trường sẵn sàng
-python -m pytest tests/test_smoke.py -v
 ```
 
-Nếu dùng GPU NVIDIA, hãy chọn lệnh cài PyTorch phù hợp với hệ điều hành và CUDA tại [trang cài đặt chính thức](https://pytorch.org/get-started/locally/), chạy lệnh đó sau khi cài requirements, rồi kiểm tra `torch.cuda.is_available()`.
+Nếu cần dùng phiên bản Python cụ thể đã cài đặt, có thể tạo môi trường bằng Python Launcher, ví dụ:
 
-### 2. Chạy Notebook
+```powershell
+py -3.10 -m venv .venv
+```
 
-1. Mở VS Code / Jupyter Lab và mở file [notebooks/lab2_pretrained_models.ipynb](notebooks/lab2_pretrained_models.ipynb).
-2. Chọn Kernel là môi trường ảo `.venv` vừa tạo.
-3. Chạy các cell tuần tự từ trên xuống dưới.
+> Nếu sử dụng GPU NVIDIA trên máy cá nhân, hãy chọn lệnh cài PyTorch phù hợp với hệ điều hành/CUDA từ [trang cài đặt PyTorch](https://pytorch.org/get-started/locally/). Sau đó xác nhận `torch.cuda.is_available()` trả về `True`. Trên Google Colab, chọn GPU trong **Runtime → Change runtime type**.
 
-### 3. Lưu và dùng lại kết quả huấn luyện
+## 🧪 Chạy kiểm thử
 
-Trong Section 0 của notebook, đặt `RUN_MODE = "train"` để huấn luyện các mô hình và lưu checkpoint tốt nhất, lịch sử loss/accuracy cùng cấu hình vào `artifacts/`. Sau khi chạy thành công một lần, đổi thành `RUN_MODE = "reuse"` rồi chạy lại notebook để bỏ qua huấn luyện và tiếp tục các phần so sánh/đánh giá. Chế độ reuse báo lỗi rõ ràng nếu thiếu artifact; không tự âm thầm train lại.
+Chạy từ thư mục gốc repository. Trên Windows, có thể dùng trực tiếp Python trong `.venv`, không phụ thuộc việc môi trường đã được activate hay chưa.
 
-> [!NOTE]
-> `RUN_MODE`, `RESUME`, `RUN_ID` và metrics reuse là mục tiêu của các phase triển khai sau (theo `docs/plans/`), chưa hoàn toàn hoạt động ở version hiện tại của notebook. Ở stage này, hãy xem các chế độ này như kế hoạch thiết kế, không phải tính năng đã sẵn sàng dùng.
+```powershell
+# Smoke test nhanh để xác nhận package import được
+.venv\Scripts\python.exe -m pytest tests\test_smoke.py -v
 
-Artifact được lưu riêng cho VGG16, ResNet-18 và ResNet-18 fine-tuned.
+# Bộ test nhanh, bỏ qua các test được đánh dấu slow
+.venv\Scripts\python.exe -m pytest tests\ -m "not slow" -q
 
-Trên Colab, notebook tự mount Drive và dùng `MyDrive/Lab2/artifacts/` để giữ kết quả qua các phiên runtime. Đặt `going_modular/` tại `MyDrive/Lab2/`; CIFAR-10 được tải vào vùng tạm `/content/cifar10_data` để đọc nhanh. Trên máy local, code và artifact nằm trong thư mục dự án.
+# Toàn bộ test, bao gồm cả các test slow
+.venv\Scripts\python.exe -m pytest tests\ -v
+```
 
-Không commit `artifacts/`, dataset hay TensorBoard logs lên GitHub. Để đổi hyperparameter hoặc tạo một lần chạy mới, chọn `RUN_MODE = "train"`; artifact cùng tên sẽ được cập nhật.
+Lệnh cuối bao gồm các test `slow`: một số test tải CIFAR-10 hoặc ImageNet weights và cần kết nối mạng. Nếu mạng/dữ liệu không sẵn sàng, một số test dữ liệu có thể được skip; hãy đọc phần tổng kết của pytest để phân biệt `passed`, `skipped`, `failed` và `deselected`.
+
+Có thể chạy riêng nhóm test chậm hoặc một module:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests\ -m slow -v
+.venv\Scripts\python.exe -m pytest tests\test_model_builder.py -m "not slow" -q
+.venv\Scripts\python.exe -m pytest tests\test_engine.py -q
+```
+
+### Linux / macOS
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pytest tests/ -m "not slow" -q
+python -m pytest tests/ -v  # toàn bộ test, có cả nhóm slow
+```
+
+## 📓 Mở Notebook và chạy thực nghiệm
+
+Notebook chính là [notebooks/pretrained_models.ipynb](notebooks/pretrained_models.ipynb).
+
+### Chạy trên máy cá nhân
+
+1. Mở notebook trong VS Code (cần extension Jupyter) hoặc JupyterLab.
+2. Chọn kernel `.venv` của repository.
+3. Chạy các cell theo thứ tự. Lần đầu, notebook có thể tải CIFAR-10 và pretrained weights; cần đủ dung lượng lưu trữ và kết nối mạng.
+
+### Chạy trên Google Colab
+
+1. Đặt repository sao cho thư mục `going_modular/` nằm tại `MyDrive/Lab2/going_modular/`.
+2. Mở `MyDrive/Lab2/notebooks/pretrained_models.ipynb` và chọn GPU nếu có.
+3. Chạy cell đầu để mount Drive. Notebook dùng `MyDrive/Lab2` làm project/artifact root và `/content/cifar10_data` làm thư mục dữ liệu tạm.
+4. Chạy các cell tuần tự; giữ nguyên runtime trong khi chạy và kiểm tra artifacts đã xuất hiện trên Drive trước khi đóng phiên.
+
+### Trạng thái các run
+
+Notebook hiện tại có `RUN_MODE = "train"` hoặc `"reuse"` và thực hiện VGG16, ResNet-18 cùng một thí nghiệm fine-tuning ResNet-18. **Nó chưa triển khai đầy đủ sáu cấu hình Phase 8** trong `docs/plans/implementation_plan.md`: chưa có bộ chọn `RUN_ID`/`RESUME` và ba run khảo sát `v2` chưa được nối vào notebook. Vì vậy, không xem một lần chạy notebook hiện tại là đã hoàn tất Phase 8; cần tích hợp các run còn thiếu và kiểm chứng resume trước khi tuyên bố đủ sáu run.
+
+`reuse` dùng artifacts đã lưu để bỏ qua huấn luyện; chỉ chọn chế độ này khi các artifacts cần thiết đã tồn tại. Không xóa hay ghi đè artifacts cũ để bắt đầu lại nếu chưa sao lưu và xác nhận đúng thư mục run.
+
+Không commit dataset, TensorBoard logs hoặc checkpoint `.pth` lên GitHub. Config, history, metrics và hình kết quả được quản lý theo quy ước artifacts của dự án.
 
 ### 4. Giám sát bằng TensorBoard
 
