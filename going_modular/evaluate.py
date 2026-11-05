@@ -263,20 +263,40 @@ def misclassified_indices(y_true: torch.Tensor, y_pred: torch.Tensor,
     return wrong
 
 
-def get_mean_std(transform) -> Tuple[List[float], List[float]]:
+def get_mean_std(transform, transform_weights=None) -> Tuple[List[float], List[float]]:
     """Reads mean/std from a transform (or the first element of a Compose) that has them.
 
     Works with torchvision's weights.transforms() and with Normalize, so the
     constants never need to be hard-coded.
 
+    Args:
+        transform: A torchvision transform (or Compose) exposing mean/std.
+        transform_weights: Optional torchvision WeightsEnum member whose
+            preprocessing preset exposes mean/std (used as fallback only when
+            the transform itself has no stats). The preset is inspected without
+            downloading model weights.
+
+    Returns:
+        (mean, std) as lists of floats.
+
     Raises:
-        ValueError: If no element exposes both mean and std.
+        ValueError: If no element exposes both mean and std and the fallback
+            weights preset is missing or does not expose stats.
     """
     for t in list(getattr(transform, "transforms", [transform])):
         mean, std = getattr(t, "mean", None), getattr(t, "std", None)
         if mean is not None and std is not None:
             return [float(m) for m in mean], [float(s) for s in std]
-    raise ValueError("No mean/std found in the given transform")
+
+    # Fallback: read stats from the preprocessing preset of the weights enum.
+    if transform_weights is not None:
+        preprocessing = getattr(transform_weights, "preprocessing", None)
+        if preprocessing is not None:
+            mean, std = getattr(preprocessing, "mean", None), getattr(preprocessing, "std", None)
+            if mean is not None and std is not None:
+                return [float(m) for m in mean], [float(s) for s in std]
+
+    raise ValueError("No mean/std found in the given transform and no valid transform_weights fallback")
 
 
 def denormalize(images: torch.Tensor, mean: Sequence[float], std: Sequence[float]) -> torch.Tensor:
@@ -350,19 +370,38 @@ def file_size_mb(path: str) -> float:
 
 
 def build_cost_record(num_params: Dict[str, int], model_path: Optional[str] = None,
-                      timing: Optional[Dict] = None, history: Optional[Dict] = None) -> Dict:
+                      timing: Optional[Dict] = None, history: Optional[Dict] = None,
+                      source_history: Optional[Dict] = None) -> Dict:
     """Collects cost figures into one JSON-ready dict (None when unavailable).
 
     Args:
         num_params: Output of model_builder.count_params (keys total, trainable).
         model_path: Path of best_model.pth, used for the file size.
         timing: Output of measure_inference_time.
-        history: Output of engine.train; train time = sum of history["epoch_time"].
+        history: Output of engine.train; train_time_phase_s is the sum of
+            history["epoch_time"] for the current phase.
+        source_history: Optional history from a previous phase (e.g. baseline
+            before fine-tuning). train_time_total_s adds its epoch_time to the
+            current phase time.
+
+    Returns:
+        Dict with num_params_total, num_params_trainable, model_file_mb,
+        ms_per_image, ms_per_batch, timing_batch_size, peak_gpu_mb, device,
+        train_time_phase_s, train_time_total_s.
     """
     timing = timing or {}
-    train_time = None
+    train_time_phase = None
     if history and history.get("epoch_time"):
-        train_time = float(sum(history["epoch_time"]))
+        train_time_phase = float(sum(history["epoch_time"]))
+
+    train_time_total = train_time_phase
+    if source_history and source_history.get("epoch_time"):
+        source_total = float(sum(source_history["epoch_time"]))
+        if train_time_total is None:
+            train_time_total = source_total
+        else:
+            train_time_total = train_time_total + source_total
+
     return {
         "num_params_total": num_params.get("total"),
         "num_params_trainable": num_params.get("trainable"),
@@ -372,7 +411,8 @@ def build_cost_record(num_params: Dict[str, int], model_path: Optional[str] = No
         "timing_batch_size": timing.get("batch_size"),
         "peak_gpu_mb": timing.get("peak_gpu_mb"),
         "device": timing.get("device"),
-        "train_time_s": train_time,
+        "train_time_phase_s": train_time_phase,
+        "train_time_total_s": train_time_total,
     }
 
 
@@ -380,12 +420,20 @@ def build_cost_record(num_params: Dict[str, int], model_path: Optional[str] = No
 # 6. Summaries and comparison
 # ----------------------------------------------------------------------------
 def evaluate_predictions(result: InferenceResult, class_names: Sequence[str]) -> Dict:
-    """Turns an InferenceResult into one JSON-serialisable record of test metrics."""
+    """Turns an InferenceResult into one JSON-serialisable record of test metrics.
+
+    Returns a dict with flat metrics keys (num_samples, loss, accuracy,
+    accuracy_ci95, macro_precision, macro_recall, macro_f1, per_class,
+    confusion_matrix) plus a ``predictions`` block (y_true, y_pred,
+    confidence — JSON-safe lists, no logits).
+    """
     n = len(class_names)
     cm = compute_confusion_matrix(y_true=result.y_true, y_pred=result.y_pred, num_classes=n)
     m = classification_metrics(cm)
     total, correct = int(cm.sum()), int(cm.diag().sum())
     low, high = wilson_interval(correct, total)
+    probs = result.probs()
+    confidence = probs.max(dim=1).values.tolist()
     return {
         "num_samples": total,
         "loss": result.loss,
@@ -404,6 +452,11 @@ def evaluate_predictions(result: InferenceResult, class_names: Sequence[str]) ->
             for i, name in enumerate(class_names)
         },
         "confusion_matrix": cm.tolist(),
+        "predictions": {
+            "y_true": result.y_true.tolist(),
+            "y_pred": result.y_pred.tolist(),
+            "confidence": confidence,
+        },
     }
 
 
@@ -419,8 +472,8 @@ def format_comparison_table(runs: Dict[str, Dict]) -> str:
               optional "best_val_acc": float}. Missing values show as an em dash.
     """
     header = ("| Run | Val acc | Test acc | 95% CI | Macro F1 | Params | Trainable | "
-              "Model (MB) | ms/image | Train time (s) |")
-    lines = [header, "|" + " :--- |" * 10]
+              "Model (MB) | ms/image | Train time phase (s) | Train time total (s) |")
+    lines = [header, "|" + " :--- |" * 11]
     for name, run in runs.items():
         m, c = run["metrics"], run.get("cost") or {}
         low, high = m["accuracy_ci95"]
@@ -436,7 +489,8 @@ def format_comparison_table(runs: Dict[str, Dict]) -> str:
             f"| {_fmt(c.get('num_params_trainable'), '{:,}')} "
             f"| {_fmt(c.get('model_file_mb'), '{:.1f}')} "
             f"| {_fmt(c.get('ms_per_image'), '{:.2f}')} "
-            f"| {_fmt(c.get('train_time_s'), '{:.0f}')} |"
+            f"| {_fmt(c.get('train_time_phase_s'), '{:.0f}')} "
+            f"| {_fmt(c.get('train_time_total_s'), '{:.0f}')} |"
         )
     return "\n".join(lines)
 
