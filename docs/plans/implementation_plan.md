@@ -1,7 +1,7 @@
 # Kế hoạch Triển khai Lab 2 — Pre-trained Models trên CIFAR-10
 
 > **Căn cứ:** Đặc tả tổng thể `00` và các đặc tả module `01`–`05`.
-> **Bộ đặc tả kiểm thử:** `docs/tests/00_test_plan.md` đến `05_test_evaluate.md`.
+> **Bộ đặc tả kiểm thử:** `docs/define&designt/tests/00_test_plan.md` đến `05_test_evaluate.md`.
 > **Notebook điều phối:** `notebooks/pretrained_models.ipynb`.
 > **Trạng thái:** Kế hoạch thực thi chính thức sau rà soát và hiệu chỉnh kiến trúc.
 
@@ -72,7 +72,7 @@ Ba runs `v2` mỗi run chỉ thay đúng một yếu tố so với `v1_resnet18`
 - Hiện thực `ModelConfig` dataclass (frozen), registry `ARCH_SPECS` cho VGG16/ResNet-18, logic thay head, freeze/unfreeze (`unfreeze_last_n`), `set_train_mode` giữ BatchNorm eval, tiền xử lý `get_transforms` và `get_param_groups`.
 - Bổ sung `count_params` (trả dict `{total, trainable, frozen}`) và `describe_model` / `format_model_summary` cho yêu cầu khảo sát kiến trúc Step 3 (thay thế phụ thuộc `torchinfo`).
 - Kiểm tra cấu hình `weights=None` dùng được để dựng lại kiến trúc khi nạp checkpoint, đồng thời transform vẫn lấy riêng từ `data.transform_weights`.
-- Triển khai bộ test `tests/test_model_builder.py` bám sát đặc tả `docs/tests/02_test_model_builder.md`.
+- Triển khai bộ test `tests/test_model_builder.py` bám sát đặc tả `docs/define&designt/tests/02_test_model_builder.md`.
 - Cập nhật các export liên quan đến model trong `going_modular/__init__.py`.
 - **Cổng:** Toàn bộ test nhanh `T1–T14c` đạt; test cần tải ImageNet weights `S1–S2` được đánh dấu `@pytest.mark.slow`; xác nhận số tham số kỳ vọng khớp lý thuyết.
 
@@ -80,7 +80,7 @@ Ba runs `v2` mỗi run chỉ thay đúng một yếu tố so với `v1_resnet18`
 - Hiện thực stratified split (`stratified_split_indices`), `_TransformSubset`, transform fallback độc lập và factory tạo ba DataLoader.
 - Bổ sung tham số `generator` cho Train DataLoader để cách ly thứ tự shuffle; đảm bảo fallback transform kích hoạt `augment=True` cho tập Train.
 - Nhận transform chuẩn qua tham số Dependency Injection do Notebook cung cấp; giữ module dữ liệu độc lập với `model_builder`.
-- Triển khai bộ test `tests/test_data_setup.py` bám sát đặc tả `docs/tests/01_test_data_setup.md`.
+- Triển khai bộ test `tests/test_data_setup.py` bám sát đặc tả `docs/define&designt/tests/01_test_data_setup.md`.
 - Cập nhật các export liên quan đến data trong `going_modular/__init__.py`.
 - **Cổng:** Toàn bộ test nhanh `D1–D15` đạt; test cần tải CIFAR-10 thật `S1–S3` được đánh dấu `slow`.
 
@@ -89,7 +89,7 @@ Ba runs `v2` mỗi run chỉ thay đúng một yếu tố so với `v1_resnet18`
 - Hiện thực các hàm lưu/nạp artifacts: `save_config`, `save_history` (riêng biệt, ghi nguyên tử qua file tạm), `save_model`, `load_model` (với `weights_only=True`), `artifacts_exist`.
 - Hiện thực `save_checkpoint` và `load_checkpoint` phục vụ resume tại ranh giới epoch kèm kiểm tra khớp phase config.
 - Hiện thực `save_test_metrics` và `load_test_metrics`.
-- Triển khai bộ test `tests/test_utils.py` bám sát đặc tả `docs/tests/04_test_utils.md`.
+- Triển khai bộ test `tests/test_utils.py` bám sát đặc tả `docs/define&designt/tests/04_test_utils.md`.
 - Cập nhật các export liên quan đến utils trong `going_modular/__init__.py`.
 - **Cổng:** Toàn bộ test `U1–U11` đạt; cơ chế atomic write và phát hiện lỗi thiếu artifact hoạt động chính xác.
 
@@ -98,14 +98,14 @@ Ba runs `v2` mỗi run chỉ thay đúng một yếu tố so với `v1_resnet18`
 - Hiện thực vòng lặp `train` hoàn chỉnh: chọn checkpoint tốt nhất theo Validation (`val_acc` hoặc `val_loss`), `restore_best`, lưu `last_checkpoint.pth` và history nguyên tử mỗi epoch.
 - Ghi nhận đầy đủ 6 keys trong `history`, đo `epoch_time` (gồm cả Train và Validation), ghi log TensorBoard theo tags chuẩn và hỗ trợ offset epoch toàn cục qua `start_epoch`.
 - Nhận `train_mode_fn` thay vì phụ thuộc trực tiếp vào `ModelConfig`.
-- Triển khai bộ test `tests/test_engine.py` bám sát đặc tả `docs/tests/03_test_engine.md`.
+- Triển khai bộ test `tests/test_engine.py` bám sát đặc tả `docs/define&designt/tests/03_test_engine.md`.
 - Cập nhật các export liên quan đến engine trong `going_modular/__init__.py`.
 - **Cổng:** Toàn bộ test `E1–E12` đạt với mô hình và dữ liệu đồ chơi; cơ chế checkpoint best, resume và TensorBoard step offset được xác minh.
 
 ### Phase 6 — `evaluate.py` và `test_evaluate.py`
 - **Các helper đánh giá độc lập:** Hiện thực `InferenceResult`, `run_inference` (suy luận 1 lượt), `compute_confusion_matrix` (keyword-only), các độ đo phân loại, khoảng tin cậy Wilson 95%, phân tích lỗi (`top_confusions`, `misclassified_indices`), `denormalize`, `get_mean_std` (có cờ `transform_weights`), `measure_inference_time`, `file_size_mb`, và các hàm `plot_*`. (Các helper này có thể phát triển song song).
 - **Cổng tích hợp kết quả và chi phí:** Kết nối `build_cost_record` (nhận `num_params` từ `model_builder`, `history` từ `engine`, `source_history` để tính `train_time_total_s`), `evaluate_predictions` (trả đủ block metrics và block predictions: `y_true`, `y_pred`, `confidence`), và `format_comparison_table`.
-- Triển khai bộ test `tests/test_evaluate.py` bám sát đặc tả `docs/tests/05_test_evaluate.md`.
+- Triển khai bộ test `tests/test_evaluate.py` bám sát đặc tả `docs/define&designt/tests/05_test_evaluate.md`.
 - Cập nhật các export liên quan đến evaluate trong `going_modular/__init__.py`.
 - **Cổng:** Toàn bộ test `V1–V24` đạt trong môi trường không màn hình (`MPLBACKEND=Agg`); bản ghi serialize được JSON; tích hợp thành công các hợp đồng từ Phase 2, 4, 5.
 

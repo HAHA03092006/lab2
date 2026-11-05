@@ -64,14 +64,17 @@ toan58936-lab2/
 ├── README.md                         # Hướng dẫn cài đặt, điều hướng tài liệu, cách tải trọng số (.pth)
 ├── requirements.txt                  # Danh sách các gói thư viện cần cài đặt (mục 2.7)
 ├── docs/                             # Hệ thống tài liệu đặc tả thiết kế (Define & Design Specs)
-│   └── define&designt/              # Define & Design Specs
-│       ├── 00_lab2_description.md   # Đặc tả tổng quan, cấu hình, danh mục thí nghiệm, quy ước chung
-│       ├── 01_data.md               # Đặc tả thiết kế module xử lý dữ liệu
-│       ├── 02_model.md               # Đặc tả thiết kế kiến trúc mô hình & Transfer Learning
-│       ├── 03_engine.md              # Đặc tả thiết kế động cơ huấn luyện
-│       ├── 04_utils.md               # Đặc tả thiết kế tiện ích và artifacts
-│       ├── 05_evaluation_results.md  # Đặc tả thiết kế bộ công cụ đánh giá & biểu đồ
-│       └── 06_implementation_plan.md # Kế hoạch hiện thực hóa
+│   ├── define&designt/              # Define & Design Specs
+│   │   ├── 00_lab2_description.md   # Đặc tả tổng quan, cấu hình, runs và quy ước chung
+│   │   ├── 01_data.md               # Đặc tả thiết kế module xử lý dữ liệu
+│   │   ├── 02_model.md              # Đặc tả thiết kế kiến trúc mô hình & Transfer Learning
+│   │   ├── 03_engine.md             # Đặc tả thiết kế động cơ huấn luyện
+│   │   ├── 04_utils.md              # Đặc tả thiết kế tiện ích và artifacts
+│   │   ├── 05_evaluation_results.md # Đặc tả thiết kế bộ công cụ đánh giá & biểu đồ
+│   │   └── tests/                   # Đặc tả test cho các module
+│   └── plans/
+│       ├── implementation_plan.md   # Kế hoạch hiện thực hóa theo phase
+│       └── phase0.md                # Checklist hoàn tất Define & Design
 ├── going_modular/                    # Package chứa các module mã nguồn cốt lõi
 │   ├── __init__.py                   # Quản lý namespace và xuất các hàm API chính (mục 2.8)
 │   ├── data_setup.py                 # Module tải, chia tách và tiền xử lý dữ liệu
@@ -207,4 +210,4 @@ Từ bản thiết kế tổng thể này, từng thành phần của hệ thố
 3. **`docs/define&designt/03_engine.md`:** Define & Design cho động cơ huấn luyện (`engine.py`).
 4. **`docs/define&designt/04_utils.md`:** Define & Design cho tiện ích và lưu/nạp artifacts (`utils.py`).
 5. **`docs/define&designt/05_evaluation_results.md`:** Define & Design cho bộ công cụ đánh giá và phân tích thực nghiệm (`evaluate.py`).
-6. **`docs/define&designt/06_implementation_plan.md`:** Kế hoạch hiện thực hóa theo từng giai đoạn.
+6. **`docs/plans/implementation_plan.md`:** Kế hoạch hiện thực hóa theo từng giai đoạn.

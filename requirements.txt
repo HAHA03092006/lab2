@@ -1,6 +1,9 @@
 ipykernel
 matplotlib
+numpy
 pandas
+pillow
+pytest
 tensorboard
 torch
 torchinfo

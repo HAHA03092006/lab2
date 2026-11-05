@@ -66,7 +66,7 @@ Test kiểm chứng **tính đúng đắn của các phép tính và hàm vẽ**
 | Mã | Cách kiểm thử (ví dụ) | Kỳ vọng | Lỗi bắt được |
 | :--- | :--- | :--- | :--- |
 | V15 | Tensor ngẫu nhiên trong `[0, 1]` qua chuẩn hóa rồi `denormalize`; tensor ngoài miền; số kênh sai. | Khôi phục giá trị ban đầu (sai số `1e-6`); kết quả luôn trong `[0, 1]`; số kênh sai gây `ValueError` | Công thức đảo ngược sai; quên `clamp`. |
-| V16 | `get_mean_std` trên `Compose([RandomHorizontalFlip(), Normalize(mean, std)])`; trên transform không có mean/std. | Trả về đúng `mean`, `std`; trường hợp sau trả về mean/std mặc định ImageNet | Không gãy khi transform thiếu thuộc tính. |
+| V16 | `get_mean_std` với transform có `Normalize(mean, std)`; transform không có stats nhưng có `transform_weights` hợp lệ; và transform không có stats, không có weights preset được xác nhận. | Ưu tiên trả đúng stats từ transform; nếu thiếu thì lấy stats từ preprocessing preset của `transform_weights` (dùng mock/fake preset trong test, không tải weights); nếu không có stats và không xác định được preset thì báo `ValueError`. | Không đoán ImageNet khi thiếu thông tin; vẫn hỗ trợ lấy thông số từ pretrained weights đã cấu hình. |
 
 ### Nhóm F: Chi phí
 

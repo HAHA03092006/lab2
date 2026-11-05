@@ -12,9 +12,8 @@ Dự án này tập trung vào thực hành ứng dụng các kiến trúc mạn
 
 | Mô hình | ID | Backbone Pretrained | Cơ chế huấn luyện | Ghi chú |
 |---|---|---|---|---|
-| **VGG16** | `v0` | `vgg16(weights='DEFAULT')` | Feature Extraction (Đóng băng feature extractor, chỉ train classifier mới) | Kiến trúc CNN cổ điển sâu, nhiều tham số |
-| **ResNet-18** | `v1` | `resnet18(weights='DEFAULT')` | Feature Extraction & Fine-tuning | Mạng Residual hiện đại, nhẹ, hội tụ nhanh |
-| **DenseNet-121** | — | `densenet121(weights='DEFAULT')` | Khám phá trực tiếp (Inline Demo) | Khám phá kết nối dày đặc (Dense connectivity) |
+| **VGG16** | `v0` | `vgg16(weights='IMAGENET1K_V1')` | Feature Extraction (Đóng băng feature extractor, chỉ train classifier mới) | Kiến trúc CNN cổ điển sâu, nhiều tham số |
+| **ResNet-18** | `v1` | `resnet18(weights='IMAGENET1K_V1')` | Feature Extraction & Fine-tuning | Mạng Residual hiện đại, nhẹ, hội tụ nhanh |
 
 ---
 
@@ -24,21 +23,30 @@ Dự án này tập trung vào thực hành ứng dụng các kiến trúc mạn
 lab2/
 │
 ├── notebooks/
-│   └── lab2_pretrained_models.ipynb   # 🎯 NOTEBOOK CHÍNH (Entry point duy nhất)
+│   └── pretrained_models.ipynb   # 🎯 NOTEBOOK CHÍNH (Entry point duy nhất)
 │
-├── going_modular/                     # Thư viện hỗ trợ mô-đun hoá (5 modules)
+├── going_modular/                     # Thư viện hỗ trợ mô-đun hoá (modules)
 │   ├── __init__.py                    # Export các hàm và lớp tiện ích
 │   ├── data_setup.py                  # Chia train/val/test & DataLoader với ImageNet transform
-│   ├── model_builder.py               # Xây dựng CIFAR10ModelV0, CIFAR10ModelV1
-│   ├── engine.py                      # train(), eval_model() — hỗ trợ ghi log TensorBoard
+│   ├── model_builder.py               # Xây dựng và tùy biến mô hình Pre-trained
+│   ├── engine.py                      # Vòng lặp huấn luyện và kiểm định
 │   ├── evaluate.py                    # Confusion matrix, per-class accuracy, biểu đồ trực quan
 │   └── utils.py                       # seed, device, lưu/nạp checkpoint (.pth)
 │
-├── data/                              # Tự động tải CIFAR-10 (~170 MB) khi chạy lần đầu
-├── artifacts/                         # Checkpoint + history/config của các lần train (không đưa lên Git)
-├── runs/                              # Thư mục log TensorBoard (tự sinh khi huấn luyện)
+├── data/                              # Tự động tải CIFAR-10 (~170 MB) khi chạy lần đầu (không commit)
+├── artifacts/                         # Kết quả sinh ra khi chạy (config/history/metrics commit, *.pth không commit)
+│   ├── figures/                       # Biểu đồ xuất ra từ quá trình đánh giá
+│   └── <tên thí nghiệm>/              # Mỗi thí nghiệm một thư mục
+├── runs/                              # Thư mục log TensorBoard (không commit)
+├── tests/                             # Bộ kiểm thử tự động (conftest.py + test module)
+│   ├── conftest.py
+│   └── test_smoke.py
+├── docs/                              # Hệ thống tài liệu đặc tả thiết kế
+│   ├── define&designt/               # Define & Design Specs (00–05)
+│   │   └── tests/                    # Bộ đặc tả kiểm thử (00_test_plan.md – 05_test_evaluate.md)
+│   ├── plans/                        # Kế hoạch triển khai theo phase (phase0.md, phase1.md, implementation_plan.md)
+│   └── analysts/                     # Báo cáo phân tích (spec_vs_code_analyst.md, Spec_Review_Report.md)
 ├── requirements.txt                   # Danh sách thư viện phụ thuộc
-├── lab2_plan.md                       # Kế hoạch và checklist triển khai chi tiết
 └── README.md                          # Tài liệu hướng dẫn dự án
 ```
 
@@ -66,6 +74,9 @@ python -m venv .venv
 # Nâng cấp pip và cài đặt thư viện phụ thuộc
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+
+# Chạy smoke test để xác nhận môi trường sẵn sàng
+python -m pytest tests/test_smoke.py -v
 ```
 
 Nếu dùng GPU NVIDIA, hãy chọn lệnh cài PyTorch phù hợp với hệ điều hành và CUDA tại [trang cài đặt chính thức](https://pytorch.org/get-started/locally/), chạy lệnh đó sau khi cài requirements, rồi kiểm tra `torch.cuda.is_available()`.
@@ -78,7 +89,12 @@ Nếu dùng GPU NVIDIA, hãy chọn lệnh cài PyTorch phù hợp với hệ đ
 
 ### 3. Lưu và dùng lại kết quả huấn luyện
 
-Trong Section 0, đặt `RUN_MODE = "train"` để huấn luyện các mô hình và lưu checkpoint tốt nhất, lịch sử loss/accuracy cùng cấu hình vào `artifacts/`. Sau khi chạy thành công một lần, đổi thành `RUN_MODE = "reuse"` rồi chạy lại notebook để bỏ qua huấn luyện và tiếp tục các phần so sánh/đánh giá. Chế độ reuse báo lỗi rõ ràng nếu thiếu artifact; không tự âm thầm train lại. Artifact được lưu riêng cho VGG16, ResNet-18 và ResNet-18 fine-tuned.
+Trong Section 0 của notebook, đặt `RUN_MODE = "train"` để huấn luyện các mô hình và lưu checkpoint tốt nhất, lịch sử loss/accuracy cùng cấu hình vào `artifacts/`. Sau khi chạy thành công một lần, đổi thành `RUN_MODE = "reuse"` rồi chạy lại notebook để bỏ qua huấn luyện và tiếp tục các phần so sánh/đánh giá. Chế độ reuse báo lỗi rõ ràng nếu thiếu artifact; không tự âm thầm train lại.
+
+> [!NOTE]
+> `RUN_MODE`, `RESUME`, `RUN_ID` và metrics reuse là mục tiêu của các phase triển khai sau (theo `docs/plans/`), chưa hoàn toàn hoạt động ở version hiện tại của notebook. Ở stage này, hãy xem các chế độ này như kế hoạch thiết kế, không phải tính năng đã sẵn sàng dùng.
+
+Artifact được lưu riêng cho VGG16, ResNet-18 và ResNet-18 fine-tuned.
 
 Trên Colab, notebook tự mount Drive và dùng `MyDrive/Lab2/artifacts/` để giữ kết quả qua các phiên runtime. Đặt `going_modular/` tại `MyDrive/Lab2/`; CIFAR-10 được tải vào vùng tạm `/content/cifar10_data` để đọc nhanh. Trên máy local, code và artifact nằm trong thư mục dự án.
 
@@ -97,13 +113,13 @@ Mở trình duyệt truy cập: [http://localhost:6006](http://localhost:6006)
 
 ---
 
-## 📖 Nội dung Chi tiết trong Notebook (`lab2_pretrained_models.ipynb`)
+## 📖 Nội dung Chi tiết trong Notebook (`pretrained_models.ipynb`)
 
 Notebook được cấu trúc chặt chẽ thành **8 Section** tương ứng đầy đủ các bước của bài lab:
 
 1. **Section 0 — Setup & Config:** Tự động nhận diện đường dẫn `ROOT`, import thư viện và thiết lập inline hyperparameters (`SEED=42`, `BATCH_SIZE=32`, `LR=1e-3`, `EPOCHS=5`, `VAL_SIZE=5000`).
 2. **Section 1 — Load & Visualize Data:** Tải CIFAR-10, phân chia tập (45.000 train / 5.000 val / 10.000 test), kiểm tra kích thước và vẽ lưới ảnh minh họa kèm nhãn.
-3. **Section 2 — Khám phá kiến trúc Pre-trained:** Soi chi tiết cấu trúc mạng VGG16, ResNet-18 qua `torchinfo.summary()`; phân tích số lượng tham số tổng vs tham số trainable; demo inline kiến trúc DenseNet-121.
+3. **Section 2 — Khám phá kiến trúc Pre-trained:** Soi chi tiết cấu trúc mạng VGG16, ResNet-18 qua `describe_model()`; phân tích số lượng tham số tổng vs tham số trainable.
 4. **Section 3 — Kiểm tra model đã adapt:** Classifier 10 lớp được cấu hình trong `model_builder.py`; notebook xác nhận output shape `[2, 10]` và giải thích chiến lược đóng băng (freezing).
 5. **Section 4 — Train & Monitor với TensorBoard:** Huấn luyện `v0` (VGG16) và `v1` (ResNet-18) với `engine.train()`; chọn checkpoint tốt nhất theo validation accuracy, lưu weights/history/config vào `artifacts/`, log vào TensorBoard; hỗ trợ nạp lại bằng `RUN_MODE="reuse"`.
 6. **Section 5 — So sánh Models:** So sánh đường cong Loss/Accuracy qua các epoch, so sánh thời gian huấn luyện và hiệu quả hội tụ giữa VGG16 và ResNet-18.
@@ -134,5 +150,4 @@ Tiền xử lý được lấy trực tiếp từ weights tương ứng trong to
 | `No module named 'going_modular'` | Kernel không nhận đúng thư mục cha | Section 0 trong notebook đã có cell tự động thêm `ROOT` vào `sys.path`. Đảm bảo đã chạy Section 0. |
 | Tải Pretrained Weights rất chậm | Trọng số mạng (đặc biệt là VGG16 ~528MB) lớn | Quá trình tải chỉ diễn ra một lần duy nhất (được cache tại thư mục `~/.cache/torch/hub/checkpoints`). Hãy kiên nhẫn đợi tải xong. |
 | `CUDA out of memory` | Bộ nhớ GPU không đủ khi xử lý batch 224×224 | Giảm `BATCH_SIZE` xuống `16` trong cell cấu hình ở Section 0. |
-| Cảnh báo BatchNorm khi backbone bị freeze | PyTorch giữ eval mode cho BatchNorm | `engine.py` đã hỗ trợ tham số `frozen_backbone` để giữ trạng thái `eval()` ổn định cho BatchNorm khi freeze. |
-vấn đề hiện tại đó là tôi đang hướng triển khai tái cấu trúc về quy trình lab2 hiện tại , bạn phân tích D:\DEEP LEARNING\lab2\docs\00_lab2_description.md để hiểu hơn nhé , về vấn đê đó là lab này nó đã từng được triển khai, nhưng yêu cầu của giáo viên đó là phải có theo luồng đặc tả thiết kế define designt sau đó mới tiến hành có nghĩa ác quy trình code hiện có thể không sai nhưng luồng đúng phải có thiết kế đặc tả và làm lại theo thiết kế , hiện tại trong D:\DEEP LEARNING\lab2\docs cũng đã có các thiết kế tôi sẽ phân tích sau trước tiên bạn hãyy xem qua về D:\DEEP LEARNING\lab2\docs\00_lab2_description.md giúp tôi 
+| Cảnh báo BatchNorm khi backbone bị freeze | PyTorch giữ eval mode cho BatchNorm | `set_train_mode(model, cfg)` trong `engine.py` giữ trạng thái `eval()` cho BatchNorm của phần đóng băng khi train. |

@@ -9,11 +9,16 @@ __pycache__/
 # Downloaded datasets and generated training artifacts
 data/
 models/
-artifacts/
 runs/
 *.pth
 *.pt
 *.ckpt
+
+# Checkpoint weights inside artifacts must not be committed;
+# JSON metrics/config and figures inside artifacts are committed.
+artifacts/**/*.pth
+artifacts/**/*.pt
+artifacts/**/*.ckpt
 
 # Jupyter transient files
 .ipynb_checkpoints/

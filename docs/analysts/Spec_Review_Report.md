@@ -1,7 +1,7 @@
 # Nhật ký Chốt Đặc tả — Lab 2
 
 > **Mục đích:** Ghi lại các quyết định đã chốt sau khi rà soát tài liệu Define & Design.
-> **Nguồn sự thật:** [`00_lab2_description.md`](./docs/define&designt/00_lab2_description.md); các đặc tả module nằm trong `docs/define&designt/`.
+> **Nguồn sự thật:** [`00_lab2_description.md`](../define&designt/00_lab2_description.md); các đặc tả module nằm trong `docs/define&designt/`.
 > **Trạng thái:** Các quyết định dưới đây đã được đưa vào tài liệu. Bộ tài liệu sẵn sàng làm baseline cho giai đoạn triển khai.
 
 ## 1. Phạm vi thực nghiệm
@@ -53,12 +53,12 @@ Ba runs `v2` mỗi run chỉ thay một yếu tố so với `v1_resnet18`, giữ
 
 ## 4. Kết quả rà soát tài liệu
 
-- [`00_lab2_description.md`](./docs/define&designt/00_lab2_description.md): danh mục sáu runs, config/artifacts, transform injection và nguyên tắc tạo loader là quy định chung.
-- [`01_data.md`](./docs/define&designt/01_data.md): mô tả fallback transform và nhận transforms từ Notebook, không yêu cầu data module ủy quyền ngược cho model module.
-- [`02_model.md`](./docs/define&designt/02_model.md): xác định API model, transforms, freeze/unfreeze và tương tác với Notebook/data module.
-- [`03_engine.md`](./docs/define&designt/03_engine.md): history, resume, TensorBoard và logic train đã đồng bộ.
-- [`04_utils.md`](./docs/define&designt/04_utils.md): seed/device, TensorBoard writer và artifact I/O được đặc tả độc lập.
-- [`05_evaluation_results.md`](./docs/define&designt/05_evaluation_results.md): đánh giá sáu runs, chi phí, CI và các phương pháp nâng cao ngoài phạm vi đã đồng bộ.
-- [`06_implementation_plan.md`](./docs/define&designt/06_implementation_plan.md): kế hoạch theo phase và cổng kiểm thử dựa trên thiết kế đã chốt.
+- [`00_lab2_description.md`](../define&designt/00_lab2_description.md): danh mục sáu runs, config/artifacts, transform injection và nguyên tắc tạo loader là quy định chung.
+- [`01_data.md`](../define&designt/01_data.md): mô tả fallback transform và nhận transforms từ Notebook, không yêu cầu data module ủy quyền ngược cho model module.
+- [`02_model.md`](../define&designt/02_model.md): xác định API model, transforms, freeze/unfreeze và tương tác với Notebook/data module.
+- [`03_engine.md`](../define&designt/03_engine.md): history, resume, TensorBoard và logic train đã đồng bộ.
+- [`04_utils.md`](../define&designt/04_utils.md): seed/device, TensorBoard writer và artifact I/O được đặc tả độc lập.
+- [`05_evaluation_results.md`](../define&designt/05_evaluation_results.md): đánh giá sáu runs, chi phí, CI và các phương pháp nâng cao ngoài phạm vi đã đồng bộ.
+- [`implementation_plan.md`](../plans/implementation_plan.md): kế hoạch theo phase và cổng kiểm thử dựa trên thiết kế đã chốt.
 
 Notebook và thư mục test hiện có trong workspace là các điểm cần đối chiếu/hoàn thiện trong giai đoạn triển khai. Trạng thái Define & Design đã chốt chỉ xác nhận baseline tài liệu; không xác nhận code đã đạt các cổng nghiệm thu.

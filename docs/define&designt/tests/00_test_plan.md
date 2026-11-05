@@ -1,6 +1,6 @@
 # Kế hoạch Kiểm thử — Tổng hợp (đặc tả)
 
-> Nguồn: tách từ `docs/define&designt/01_data.md` đến `05_evaluation_results.md` (mục Kế hoạch kiểm thử của từng module). Loại trừ `00_lab2_description.md` và `06_implementation_plan.md`.
+> Nguồn: tách từ `docs/define&designt/01_data.md` đến `05_evaluation_results.md` (mục Kế hoạch kiểm thử của từng module). Kế hoạch triển khai nằm tại `docs/plans/implementation_plan.md`.
 
 ## 1. Mục đích
 
