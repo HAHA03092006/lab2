@@ -17,18 +17,7 @@ def get_pretrained_transform(
     augment: bool = False,
     model_name: Literal["vgg16", "resnet18"] = "vgg16",
 ) -> transforms.Compose:
-    """Return preprocessing associated with the selected pretrained weights.
 
-    Args:
-        augment: If True, apply a random horizontal flip before the weights transform.
-        model_name: Architecture whose pretrained weights define preprocessing.
-
-    Raises:
-        ValueError: If ``model_name`` is not supported.
-
-    Returns:
-        A composed transform compatible with the selected pretrained weights.
-    """
     if model_name == "vgg16":
         weights = VGG16_Weights.IMAGENET1K_V1
     elif model_name == "resnet18":

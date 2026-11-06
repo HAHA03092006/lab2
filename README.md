@@ -132,18 +132,18 @@ Notebook chính là [notebooks/pretrained_models.ipynb](notebooks/pretrained_mod
 
 1. Mở notebook trong VS Code (cần extension Jupyter) hoặc JupyterLab.
 2. Chọn kernel `.venv` của repository.
-3. Chạy các cell theo thứ tự. Lần đầu, notebook có thể tải CIFAR-10 và pretrained weights; cần đủ dung lượng lưu trữ và kết nối mạng.
+3. Chuẩn bị CIFAR-10 theo cấu trúc torchvision nhận tại `data/`. Notebook hiện dùng `download=False`; pretrained weights có thể được tải khi khởi tạo model ở luồng train.
 
 ### Chạy trên Google Colab
 
-1. Đặt repository sao cho thư mục `going_modular/` nằm tại `MyDrive/Lab2/going_modular/`.
-2. Mở `MyDrive/Lab2/notebooks/pretrained_models.ipynb` và chọn GPU nếu có.
-3. Chạy cell đầu để mount Drive. Notebook dùng `MyDrive/Lab2` làm project/artifact root và `/content/cifar10_data` làm thư mục dữ liệu tạm.
-4. Chạy các cell tuần tự; giữ nguyên runtime trong khi chạy và kiểm tra artifacts đã xuất hiện trên Drive trước khi đóng phiên.
+1. Đặt dữ liệu CIFAR-10 trong `MyDrive/lab2/data/` (tên thư mục phân biệt chữ hoa/thường). Không cần chép `going_modular/` lên Drive; notebook clone code từ GitHub vào Colab runtime.
+2. Mở notebook `notebooks/pretrained_models.ipynb` từ checkout GitHub trong Colab và chọn GPU nếu có.
+3. Chạy cell setup để mount Drive. Notebook dùng `MyDrive/lab2` làm data/artifact root, `/content/lab2` cho code checkout và `/content/cifar10_data` làm bản dữ liệu runtime.
+4. Với code Phase 8 hiện tại, chỉ chạy đến hết phần setup/configuration rồi dừng. Các cell thực nghiệm phía dưới chưa được nối đầy đủ với sáu `RUN_ID`; không chạy tuần tự qua chúng như một lần huấn luyện Phase 8.
 
 ### Trạng thái các run
 
-Notebook hiện tại có `RUN_MODE = "train"` hoặc `"reuse"` và thực hiện VGG16, ResNet-18 cùng một thí nghiệm fine-tuning ResNet-18. **Nó chưa triển khai đầy đủ sáu cấu hình Phase 8** trong `docs/plans/implementation_plan.md`: chưa có bộ chọn `RUN_ID`/`RESUME` và ba run khảo sát `v2` chưa được nối vào notebook. Vì vậy, không xem một lần chạy notebook hiện tại là đã hoàn tất Phase 8; cần tích hợp các run còn thiếu và kiểm chứng resume trước khi tuyên bố đủ sáu run.
+Notebook hiện khai báo `RUN_MODE`, `RESUME` và cấu hình cho sáu `RUN_ID`, nhưng các cell huấn luyện cũ vẫn chạy các luồng cố định VGG16, ResNet-18 và fine-tuning, chưa được điều khiển đầy đủ bởi cấu hình run đã chọn. Vì vậy, chưa thể dùng chúng để thực hiện sáu run Phase 8; cần tích hợp các cell train/resume/reuse trước khi bắt đầu huấn luyện thật.
 
 `reuse` dùng artifacts đã lưu để bỏ qua huấn luyện; chỉ chọn chế độ này khi các artifacts cần thiết đã tồn tại. Không xóa hay ghi đè artifacts cũ để bắt đầu lại nếu chưa sao lưu và xác nhận đúng thư mục run.
 
