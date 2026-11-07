@@ -1,314 +1,157 @@
-# Đặc tả Thiết kế Module Huấn luyện — `engine.py`
+# Đặc tả Module Huấn luyện — `engine.py`
 
-> **Tài liệu:** `docs/define&designt/03_engine.md` (Define & Design cho động cơ huấn luyện)
-> **Module liên quan:** `going_modular/engine.py`
-> **Bước thực hành tương ứng:** Step 6 — Train the Model (và phần chọn mô hình của Step 7)
-> **Phụ thuộc:** `docs/define&designt/00_lab2_description.md` (tổng quan, cấu hình, `RUN_MODE`), `docs/define&designt/01_data.md` (DataLoader), `docs/define&designt/02_model.md` (mô hình, `set_train_mode`, `get_param_groups`)
-> **Trạng thái:** Pre-implementation Design Specification (Đã chốt thiết kế chính thức).
+| Mục | Nội dung |
+| :--- | :--- |
+| **Name** | `engine` — vòng lặp huấn luyện và kiểm định |
+| **Created date** | `[điền ngày tạo]` |
+| **Updated date** | 2026-11-07 (v0.2) |
+| **Mục tiêu** | Huấn luyện mô hình qua nhiều epoch, chọn checkpoint tốt nhất theo Validation, ghi history và log TensorBoard, hỗ trợ tiếp tục huấn luyện (resume) tại ranh giới epoch |
+| **Bước đề bài** | Step 6 — Train the Model |
+| **Phụ thuộc** | `00_lab2_description.md`, `04_utils.md` (lưu/nạp checkpoint và history) |
+| **Source** | Code: `going_modular/engine.py`. Test: `tests/test_engine.py`. Tài liệu: mục 10 |
 
 ---
 
-## PHẦN I: DEFINE — Xác định Bài toán & Yêu cầu
+## 1. Luồng xử lý
 
-### 1.1. Bối cảnh & Mục tiêu
+Một epoch:
 
-Module này nằm ở giữa hệ thống:
+```text
+train_step ──► evaluate_step ──► ghi history ──► ghi TensorBoard
+                                      │
+                                      ▼
+                  val tốt hơn best? ──có──► lưu best_model.pth
+                                      │
+                                      ▼
+                       lưu last_checkpoint.pth + history.json
+```
 
-* **`engine.py`** nhận mô hình và các `DataLoader`, chạy vòng lặp huấn luyện/kiểm định, chọn trọng số tốt nhất theo Validation, ghi log TensorBoard và trả về lịch sử huấn luyện.
-* Các thao tác seed, device, TensorBoard writer và artifact I/O thuộc `utils.py`, được đặc tả độc lập tại `docs/define&designt/04_utils.md`.
+Sau epoch cuối: nếu `restore_best`, nạp lại trọng số tốt nhất vào mô hình.
 
-Mục tiêu:
+## 2. Input / Output
 
-* Chuẩn hóa vòng lặp thành `train_step` và `evaluate_step` có thể kiểm thử độc lập.
-* Giữ BatchNorm đã đóng băng đứng yên trong lúc huấn luyện (phối hợp với `set_train_mode` ở `02_model.md`).
-* Cho phép huấn luyện hai giai đoạn (Feature Extraction rồi Fine-Tuning) với đường cong TensorBoard liền mạch.
-* Phối hợp với `utils.py` để lưu checkpoint và tiếp tục train khi phiên bị gián đoạn.
+| | Mô tả |
+| :--- | :--- |
+| **Input** | `model`, `train_dataloader`, `val_dataloader`, `optimizer`, `loss_fn`, `epochs`, `device` |
+| **Input tùy chọn** | `train_mode_fn`, `writer`, `start_epoch`, `save_path`, `monitor`, `restore_best`, `checkpoint_dir`, `resume`, `expected_phase_config` |
+| **Output** | `history` (xem mục 5.1) |
+| **Tác dụng phụ** | Ghi `best_model.pth`, `last_checkpoint.pth`, `history.json`, log TensorBoard (mục 5.3) |
 
-### 1.2. Đầu vào / Đầu ra
-
-| Module | Đầu vào | Đầu ra |
-| :--- | :--- | :--- |
-| `engine.py` | `nn.Module`, `DataLoader` (Train, Validation), hàm mất mát, optimizer, thiết bị, số epoch, đường dẫn lưu mô hình, TensorBoard writer tùy chọn | `history` (loss và accuracy theo epoch, learning rate); trọng số tốt nhất lưu trên đĩa |
-
-### 1.3. Yêu cầu chức năng
+## 3. Yêu cầu
 
 | Mã | Yêu cầu |
 | :--- | :--- |
-| FR-1 | `train_step` thực hiện một epoch huấn luyện, trả về loss và accuracy trung bình **có trọng số theo số mẫu**. |
-| FR-2 | `evaluate_step` đánh giá một epoch ở chế độ `eval`, không tính gradient, không thay đổi trọng số. |
-| FR-3 | Vòng lặp huấn luyện giữ BatchNorm đã đóng băng ở chế độ `eval` thông qua hàm chuyển chế độ được truyền vào. |
-| FR-4 | `train` chạy nhiều epoch, ghi `history` đầy đủ và chọn trọng số tốt nhất theo tập **Validation** (không dùng tập Test). |
-| FR-5 | Sau huấn luyện có thể khôi phục trọng số tốt nhất vào mô hình để bước đánh giá dùng đúng mô hình đã chọn. |
-| FR-6 | Hỗ trợ huấn luyện nối tiếp (Giai đoạn 2) với chỉ số epoch bắt đầu khác 0, để đường cong TensorBoard không bị chồng lên nhau. |
-| FR-7 | Ghi log TensorBoard theo thời gian thực: loss, accuracy, learning rate cho từng epoch. |
-| FR-8 | Phối hợp với `utils.py` để lưu resume checkpoint sau mỗi epoch và khôi phục trạng thái train khi được yêu cầu. |
+| FR-1 | Loss và accuracy tính trung bình **theo số mẫu**, không theo số batch. |
+| FR-2 | `evaluate_step` không tính gradient và không đổi trọng số. |
+| FR-3 | Chọn checkpoint tốt nhất bằng Validation (`val_acc` hoặc `val_loss`), không dùng Test. |
+| FR-4 | Chế độ train có thể tùy biến qua hook `train_mode_fn` (để giữ BatchNorm đã đóng băng ở `eval`). |
+| FR-5 | `history` đủ 6 khóa, mỗi khóa một phần tử cho mỗi epoch hoàn tất. |
+| FR-6 | Ghi TensorBoard theo tag chuẩn; `writer` là tùy chọn. |
+| FR-7 | Lưu `last_checkpoint.pth` và `history.json` sau mỗi epoch; lỗi ghi phải dừng run, không bỏ qua. |
+| FR-8 | Resume tiếp tục từ epoch kế tiếp khi checkpoint khớp cấu hình; không khớp thì báo lỗi, không tự chạy lại từ đầu. |
+| FR-9 | Tham số sai báo `ValueError` rõ ràng. |
 
-### 1.4. Ràng buộc
+## 4. Ràng buộc
 
-* Hàm mất mát: `nn.CrossEntropyLoss`; optimizer: Adam (theo `00_lab2_description.md`).
-* Cấu hình mặc định: `EPOCHS = 5`, `LR = 1e-3` (Giai đoạn 1); `EPOCHS_FT = 3`, `LR_FINETUNE = 1e-4` (Giai đoạn 2); `SEED = 42`.
-* Mỗi run có thư mục artifacts riêng như quy định tại `00_lab2_description.md`.
-* `engine.py` **không** phụ thuộc trực tiếp vào `ModelConfig`; chỉ nhận hàm chuyển chế độ qua tham số (xem mục 2.3).
-* Ghi log sử dụng writer do orchestration tạo theo quy ước ở `04_utils.md`.
+- Engine **không biết** `ModelConfig`; mọi hành vi riêng của mô hình đi qua tham số.
+- Engine **không tạo** optimizer và không dùng tập Test.
+- `epochs` là số epoch chạy trong phase hiện tại. `start_epoch` chỉ là offset để đánh số log và biểu đồ, **không** dùng để resume.
+- Resume chỉ tiếp tục ở ranh giới epoch; không khôi phục trạng thái RNG, nên không đảm bảo cùng chuỗi batch như lần chạy liên tục.
 
-### 1.5. Tiêu chí chấp nhận
+## 5. Thiết kế
 
-1. Sau `train_step`, chỉ các tham số `requires_grad=True` thay đổi; tham số đóng băng giữ nguyên giá trị.
-2. Loss trung bình của một epoch bằng loss tính trên toàn bộ tập dữ liệu (không lệch do batch cuối nhỏ hơn).
-3. BatchNorm đã đóng băng không đổi `running_mean` sau một epoch huấn luyện.
-4. `history` có độ dài đúng bằng số epoch; `best_model.pth` tương ứng với epoch tốt nhất theo Validation.
-5. Cùng `seed` cho cùng kết quả khởi tạo/chia dữ liệu trong cùng môi trường; lưu rồi nạp lại cho cùng đầu ra mô hình. Resume bảo đảm tiếp tục ở ranh giới epoch nhưng không cam kết cùng chuỗi RNG/batch như chạy liền mạch.
-6. Ghi lỗi giữa chừng không làm hỏng tệp artifacts đã có.
-7. Chức năng resume khôi phục chính xác trạng thái huấn luyện từ `last_checkpoint.pth`.
-8. Bộ test ở mục 2.11 đều đạt.
+### 5.1. Schema `history`
 
----
+| Khóa | Kiểu mỗi epoch | Ghi chú |
+| :--- | :--- | :--- |
+| `train_loss`, `val_loss` | `float` | Trung bình theo số mẫu |
+| `train_acc`, `val_acc` | `float` | Trong `[0, 1]` |
+| `lr` | `list[float]` | Một giá trị cho mỗi nhóm tham số của optimizer |
+| `epoch_time` | `float` (giây) | Gồm cả Train và Validation |
 
-## PHẦN II: DESIGN — Thiết kế Chi tiết
+### 5.2. Quy tắc chọn best
 
-### 2.1. Vị trí trong kiến trúc hệ thống
+| `monitor` | Hướng | Cải thiện khi |
+| :--- | :--- | :--- |
+| `val_acc` (mặc định) | Tối đa | Lớn hơn **nghiêm ngặt** best hiện tại |
+| `val_loss` | Tối thiểu | Nhỏ hơn **nghiêm ngặt** best hiện tại |
 
-```text
-notebooks/pretrained_models.ipynb
-   │  set_seed → get_device → data_setup → model_builder → (RUN_MODE?)
-   │
-   ├── "train" ──► engine.train(...) ──► artifacts/<exp>/best_model.pth
-   │                    │                 + last_checkpoint.pth
-   │                    │                 + history.json + config.json  (utils)
-   │                    └──► runs/<exp>/  (TensorBoard, utils.create_writer)
-   │
-   └── "reuse" ──► utils.load_experiment(...) + utils.load_model(...)
-                        │
-                        ▼
-             mô hình đã nạp ──► evaluate.py (suy luận trên test_dataloader)
-```
+Bằng nhau thì giữ epoch sớm hơn.
 
-### 2.2. Thiết kế tham số cấu hình
+### 5.3. Tác dụng phụ
 
-Tham số của hàm `train`:
+| Thời điểm | Ghi gì |
+| :--- | :--- |
+| Mỗi epoch | History, log TensorBoard |
+| Khi best cải thiện | `best_model.pth` (qua `utils.save_model`) |
+| Mỗi epoch (khi có `checkpoint_dir`) | `last_checkpoint.pth`, `history.json` (qua `utils`) |
+| Kết thúc | Nạp lại best vào model nếu `restore_best` |
 
-| Tham số | Kiểu | Mặc định | Ý nghĩa |
+Tag TensorBoard: `Loss/train`, `Loss/val`, `Accuracy/train`, `Accuracy/val`, `LR/group_<i>`. Bước ghi của epoch thứ `k` trong phase là `start_epoch + k` (với `k` từ 1). Ví dụ `epochs=2, start_epoch=5` ghi ở bước 6 và 7.
+
+### 5.4. Resume
+
+1. Cần `checkpoint_dir` và `expected_phase_config`.
+2. Nạp `last_checkpoint.pth`: model, optimizer, số epoch đã hoàn tất, best score/epoch, history.
+3. Từ chối nếu phase config không khớp, hoặc số epoch đã hoàn tất không nhỏ hơn `epochs`.
+4. Tiếp tục từ epoch kế tiếp; history được nối tiếp.
+
+### 5.5. Quyết định thiết kế
+
+| Quyết định | Lý do |
+| :--- | :--- |
+| Loss nhân với kích thước batch rồi chia tổng số mẫu | Batch cuối nhỏ không bị tính nặng như batch đầy |
+| Nhận `train_mode_fn` thay vì `ModelConfig` | Engine độc lập với module mô hình; `model.train()` sẽ làm BN đã đóng băng cập nhật thống kê |
+| Lưu `best_model.pth` và `last_checkpoint.pth` riêng | Hai thứ khác ý nghĩa: best để đánh giá, last để tiếp tục train |
+| So sánh nghiêm ngặt khi chọn best | Kết quả xác định, tránh ghi đè không cần thiết |
+| Ghi LR theo từng nhóm tham số | Fine-Tuning dùng hai LR khác nhau, cần quan sát cả hai |
+
+## 6. API
+
+| Hàm | Đầu vào chính | Đầu ra | Lỗi |
 | :--- | :--- | :--- | :--- |
-| `model` | `nn.Module` | bắt buộc | Mô hình đã dựng, đã chuyển lên `device`. |
-| `train_dataloader`, `val_dataloader` | `DataLoader` | bắt buộc | Hai luồng dữ liệu (`02`/`01`). |
-| `loss_fn` | `nn.Module` | bắt buộc | `CrossEntropyLoss`. |
-| `optimizer` | `Optimizer` | bắt buộc | Adam; Giai đoạn 2 dùng param groups. |
-| `epochs` | `int` | bắt buộc | Tổng số epoch cần chạy trong phase hiện tại (`5` cho Feature Extraction, `3` cho Fine-Tuning). |
-| `device` | `torch.device` | bắt buộc | Từ `get_device`. |
-| `train_mode_fn` | `Optional[Callable]` | `None` | Hàm đưa mô hình vào chế độ train; `None` thì gọi `model.train()`. |
-| `writer` | `Optional[SummaryWriter]` | `None` | `None` thì không ghi TensorBoard. |
-| `start_epoch` | `int` | `0` | Offset epoch toàn cục chỉ dùng cho TensorBoard/báo cáo; không quyết định số epoch cần chạy. |
-| `save_path` | `Optional[str]` | `None` | Đường dẫn lưu `best_model.pth`; `None` thì không lưu. |
-| `monitor` | `str` | `"val_acc"` | Chỉ số dùng chọn mô hình tốt nhất (`val_acc` hoặc `val_loss`). |
-| `restore_best` | `bool` | `True` | Nạp lại trọng số tốt nhất vào mô hình sau khi huấn luyện. |
-| `checkpoint_dir` | `Optional[str]` | `None` | Thư mục lưu checkpoint; tự động lưu `last_checkpoint.pth` sau mỗi epoch. |
-| `resume` | `bool` | `False` | Chỉ khi `True`, khôi phục phase từ `last_checkpoint.pth`; phải có checkpoint và config khớp. Mặc định không tự tiếp tục từ tệp cũ. |
+| `train_step(model, dataloader, loss_fn, optimizer, device, train_mode_fn=None)` | như tên | `(loss, acc)` | `ValueError` nếu loader không có mẫu |
+| `evaluate_step(model, dataloader, loss_fn, device)` | như tên | `(loss, acc)`, model ở `eval` | `ValueError` nếu loader không có mẫu |
+| `train(model, train_dataloader, val_dataloader, optimizer, loss_fn, epochs, device, ...)` | xem mục 2 | `history` | `ValueError` (bên dưới) |
 
-Cấu trúc `config.json` (ghép từ ba tài liệu, lưu cùng artifacts để tái lập):
+`train` báo `ValueError` khi: `epochs <= 0`; `start_epoch < 0`; `monitor` không phải `val_acc` hoặc `val_loss`; `resume=True` mà thiếu `checkpoint_dir`; checkpoint đã hoàn tất đủ `epochs`. Checkpoint có phase config không khớp bị từ chối bởi `utils.load_checkpoint`.
 
-```json
-{
-  "model": {
-    "arch": "resnet18", "num_classes": 10, "weights": null,
-    "freeze_backbone": true, "unfreeze_last_n": 1,
-    "dropout": 0.0, "freeze_bn_stats": true
-  },
-  "data": { "batch_size": 32, "val_size": 5000, "transform_model": "resnet18",
-            "transform_weights": "IMAGENET1K_V1" },
-  "train": { "epochs": 3, "lr_head": 1e-3, "lr_backbone": 1e-4,
-             "monitor": "val_acc", "start_epoch": 5,
-             "init_from": "artifacts/v1_resnet18" },
-  "seed": 42
-}
-```
+Lưu ý thứ tự tham số: `optimizer` đứng trước `loss_fn`.
 
-### 2.3. `train_step` và `evaluate_step`
+## 7. Tích hợp
 
-**`train_step(model, dataloader, loss_fn, optimizer, device, train_mode_fn=None) -> Tuple[float, float]`**
-
-```text
-1. đưa mô hình vào chế độ train: train_mode_fn(model) nếu có, ngược lại model.train()
-2. với mỗi batch (X, y):
-     chuyển X, y lên device
-     logits = model(X);  loss = loss_fn(logits, y)
-     optimizer.zero_grad();  loss.backward();  optimizer.step()
-     cộng dồn: loss_sum += loss.item() * len(y);  correct += (logits.argmax(1) == y).sum().item()
-3. return loss_sum / số mẫu đã duyệt,  correct / số mẫu đã duyệt
-```
-
-**`evaluate_step(model, dataloader, loss_fn, device) -> Tuple[float, float]`**
-
-```text
-1. model.eval()
-2. trong torch.inference_mode(): duyệt batch, cộng dồn loss và số dự đoán đúng như trên
-3. return loss trung bình, accuracy
-```
-
-Quyết định thiết kế quan trọng:
-
-* **Trung bình có trọng số theo số mẫu.** Batch cuối thường nhỏ hơn `batch_size`; nếu lấy trung bình cộng loss của các batch, kết quả sẽ lệch so với loss trên toàn tập.
-* **`train_mode_fn` thay vì truyền `ModelConfig`.** `engine.py` không cần biết cấu hình mô hình. Notebook truyền `functools.partial(set_train_mode, cfg=model_cfg)`. Nhờ đó `engine.py` dùng lại được cho mô hình bất kỳ và dễ kiểm thử bằng mô hình đồ chơi.
-* **`inference_mode` khi đánh giá** tiết kiệm bộ nhớ, không dựng đồ thị tính toán.
-* `evaluate_step` cũng được `evaluate.py` dùng lại để tính loss và accuracy trên tập Test, tránh viết lại vòng lặp.
-
-### 2.4. Hàm `train` (vòng lặp nhiều epoch)
-
-**Chữ ký:** `train(model, train_dataloader, val_dataloader, loss_fn, optimizer, epochs, device, train_mode_fn=None, writer=None, start_epoch=0, save_path=None, monitor="val_acc", restore_best=True, checkpoint_dir=None, resume=False) -> Dict[str, List]`
-
-**Luồng xử lý (kèm Resume Checkpoint):**
-
-```text
-1. validate đầu vào (epochs > 0, monitor hợp lệ, start_epoch >= 0)
-2. nếu resume=True: yêu cầu last_checkpoint.pth và config phase khớp; nạp model_state,
-   optimizer_state, phase_epochs_completed, history, best_score và best_epoch.
-   Nếu không resume: phase_epochs_completed = 0; khởi tạo history rỗng; best = None
-3. với mỗi phase_epoch từ phase_epochs_completed đến epochs - 1:
-     bắt đầu đo thời gian epoch
-     train_loss, train_acc = train_step(...)
-     val_loss,   val_acc   = evaluate_step(...)
-     nếu device là CUDA: đồng bộ CUDA trước khi dừng đồng hồ
-     kết thúc đo thời gian epoch (epoch_time)
-     ghi vào history (kèm lr của từng param group và epoch_time)
-     global_epoch = start_epoch + phase_epoch + 1
-     nếu writer: ghi scalar tại global_epoch
-     nếu chỉ số monitor cải thiện thực sự:
-       lưu state_dict vào save_path (best_model.pth), nhớ best_epoch
-     nếu checkpoint_dir:
-       lưu last_checkpoint.pth (model/optimizer state, phase_epochs_completed=phase_epoch + 1,
-           best_score, best_epoch, history và phase_config) bằng atomic write
-       lưu history.json nguyên tử sau mỗi epoch
-     in một dòng tóm tắt epoch (loss, accuracy, thời gian)
-4. lưu history cuối cùng nguyên tử; nếu restore_best và có save_path: nạp state_dict tốt nhất vào model
-5. return history
-```
-
-`epochs` luôn là **tổng số epoch mục tiêu của phase**, không phải số epoch toàn cục. Ví dụ fine-tune có `epochs=3`, `start_epoch=5`: chạy đúng ba epoch phase; TensorBoard step là 6, 7, 8. Resume với một epoch đã hoàn tất sẽ chạy tiếp hai epoch còn lại. Checkpoint lưu số epoch đã hoàn tất trong phase, tách biệt với offset toàn cục. Resume chỉ hỗ trợ ranh giới epoch; không lưu/khôi phục RNG nên không đảm bảo cùng thứ tự sample/augmentation như một lần chạy liên tục.
-
-**Schema `history`:**
-
-| Khóa | Kiểu | Ý nghĩa |
-| :--- | :--- | :--- |
-| `train_loss`, `val_loss` | `List[float]` | Loss trung bình mỗi epoch |
-| `train_acc`, `val_acc` | `List[float]` | Accuracy mỗi epoch, trong $[0, 1]$ |
-| `lr` | `List[List[float]]` | Learning rate của từng param group mỗi epoch |
-| `epoch_time` | `List[float]` | Thời gian thực thi mỗi epoch tính bằng giây (gồm cả train và val) |
-
-**Chọn mô hình tốt nhất.**
-
-* Mặc định theo `val_acc` (lớn hơn là tốt); với `val_loss` thì nhỏ hơn là tốt.
-* Chỉ lưu khi cải thiện **thực sự** (so sánh chặt), nên khi hòa thì giữ epoch sớm hơn.
-* Dùng tập Validation, **không bao giờ** dùng tập Test, để tránh rò rỉ dữ liệu (xem `01_data.md`).
-* `restore_best=True` bảo đảm mô hình dùng ở Step 7 là mô hình tốt nhất, không phải mô hình ở epoch cuối.
-* `resume=False` là mặc định. Khi bật resume, checkpoint phải tồn tại và phase config phải khớp; checkpoint không khớp hoặc epoch đã hoàn tất vượt `epochs` thì báo lỗi, không tự khởi động lại.
-
-### 2.5. Chiến lược hai giai đoạn và `RUN_MODE`
-
-**Hai giai đoạn huấn luyện** (cấu hình ở `02_model.md`, mục 2.5):
-
-| | Giai đoạn 1: Feature Extraction | Giai đoạn 2: Fine-Tuning |
-| :--- | :--- | :--- |
-| Mô hình | `build_model` với `unfreeze_last_n=0` | Cùng mô hình, nạp `best_model.pth` của Giai đoạn 1, dựng lại với `unfreeze_last_n=N` |
-| Optimizer | Adam mới, `lr=1e-3` cho head | Adam **mới** với `get_param_groups` (head `1e-3`, backbone `1e-4`) |
-| Epochs | `EPOCHS = 5` | `EPOCHS_FT = 3` |
-| `start_epoch` | `0` | `5` (số epoch Giai đoạn 1) |
-| Thư mục artifacts | `artifacts/v1_resnet18/` | `artifacts/v1_resnet18_finetune/` |
-
-Giai đoạn 2 tạo optimizer **mới** vì tập tham số trainable đã thay đổi (tham số mới mở khóa không có trạng thái Adam). Đặt `start_epoch = 5` để đường cong TensorBoard của hai giai đoạn nối liền nhau trên cùng trục.
-
-**`RUN_MODE`** (điều phối trong notebook, dùng hàm của `utils.py`):
-
-| Chế độ | Luồng |
+| Bên dùng | Cách phối hợp |
 | :--- | :--- |
-| `"train"` | Notebook lưu `config.json` trước train; `engine.train` lưu `best_model.pth`, checkpoint và `history.json` sau mỗi epoch |
-| `"reuse"` | Kiểm tra đủ ba artifacts huấn luyện; dựng mô hình bằng `weights=None`, nạp `best_model.pth`; dùng `test_metrics.json` nếu có, nếu thiếu thì đánh giá Test một lần và lưu |
+| Notebook | Dựng model, optimizer (từ `get_param_groups`), loader, writer; truyền `train_mode_fn=partial(set_train_mode, cfg=cfg)`; đóng writer sau khi xong |
+| `model_builder.py` | Cung cấp `set_train_mode` và nhóm tham số; engine không import module này |
+| `utils.py` | Engine gọi `save_model`, `save_checkpoint`, `load_checkpoint`, `save_history` |
+| `evaluate.py` | Không dùng; engine chỉ làm việc với Train và Validation |
 
-Nếu `RUN_MODE = "reuse"` mà artifacts thiếu, hệ thống **báo lỗi rõ ràng** (`FileNotFoundError`), không âm thầm chuyển sang huấn luyện.
+## 8. Tiêu chí chấp nhận
 
-### 2.6. Thiết kế ghi log TensorBoard
-
-| Tag | Giá trị | Thời điểm |
+| Tiêu chí | Yêu cầu | Test |
 | :--- | :--- | :--- |
-| `Loss/train`, `Loss/val` | loss trung bình của epoch | cuối mỗi epoch |
-| `Accuracy/train`, `Accuracy/val` | accuracy của epoch | cuối mỗi epoch |
-| `LR/group_<i>` | learning rate của param group `i` | cuối mỗi epoch |
+| Loss không lệch do batch cuối nhỏ | FR-1 | E3 |
+| Chỉ tham số trainable thay đổi sau `train_step` | FR-1 | E2 |
+| `evaluate_step` không đổi trọng số, để model ở `eval` | FR-2 | E4 |
+| Checkpoint là epoch tốt nhất theo Validation | FR-3 | E8, E9, E15 |
+| `train_mode_fn` được gọi; BN đã đóng băng không đổi `running_mean` | FR-4 | E5, E6 |
+| `history` đủ 6 khóa, đúng độ dài; `epoch_time` mỗi epoch một giá trị | FR-5 | E7, E16 |
+| Tag và bước TensorBoard đúng; chạy được khi `writer=None` | FR-6 | E11, E12 |
+| Checkpoint và history ghi nguyên tử; lỗi ghi không làm hỏng file cũ | FR-7 | E14 |
+| Resume đúng epoch kế tiếp; config không khớp bị từ chối | FR-8 | E13 |
+| Tham số sai báo `ValueError` | FR-9 | E10 |
 
-* Bước ghi (step) = `start_epoch + phase_epoch + 1`, với `phase_epoch` từ $0$ đến `epochs - 1`.
-* `create_writer(experiment_name)` ghi vào `runs/<experiment_name>`; tên thí nghiệm trùng tên thư mục artifacts để dễ đối chiếu.
-* Cuối `train` gọi `writer.flush()`; việc `close()` do nơi tạo writer (notebook) chịu trách nhiệm.
-* Ma trận nhầm lẫn và biểu đồ phân tích thuộc `evaluate.py`, không ghi ở `engine.py`.
+Chi tiết từng test nằm trong `tests/03_test_engine.md`. Chạy: `pytest tests/test_engine.py -v`.
 
-### 2.7. Phối hợp với `utils.py`
+## 9. Ngoài phạm vi
 
-Engine sở hữu logic quyết định *khi nào* lưu mô hình tốt nhất và resume checkpoint; `utils.py` sở hữu serialize/deserialize, schema validation và thao tác I/O an toàn. API của utilities được định nghĩa duy nhất tại `docs/define&designt/04_utils.md`.
+- Early stopping, learning-rate scheduler, huấn luyện nhiều GPU.
+- Khôi phục trạng thái RNG khi resume.
+- Đo hiệu năng GPU và hành vi riêng của GPU/MPS.
 
-| Hàm engine | Đầu vào | Đầu ra | Ngoại lệ |
-| :--- | :--- | :--- | :--- |
-| `train_step(model, dataloader, loss_fn, optimizer, device, train_mode_fn=None)` | như tên | `(loss, acc)` | Lỗi dữ liệu hoặc mô hình được truyền lên |
-| `evaluate_step(model, dataloader, loss_fn, device)` | như tên | `(loss, acc)` | Lỗi dữ liệu hoặc mô hình được truyền lên |
-| `train(...)` | xem mục 2.4 | `Dict[str, List]` | `ValueError` nếu `epochs <= 0`, `start_epoch < 0`, `monitor` không hợp lệ |
+## 10. Source
 
-### 2.8. Tích hợp với các module khác
-
-| Module | Cách phối hợp |
-| :--- | :--- |
-| `model_builder.py` | Notebook truyền `partial(set_train_mode, cfg=...)` làm `train_mode_fn`; dùng `get_param_groups` để dựng optimizer Giai đoạn 2. |
-| `data_setup.py` | `train_dataloader` cho `train_step`, `val_dataloader` cho chọn mô hình; `test_dataloader` **không** đi vào `engine.train`. |
-| `evaluate.py` | Dùng `run_inference` cho Test; nhận `history` từ utils để vẽ đường cong học. |
-| `utils.py` | Checkpoint I/O và cập nhật history nguyên tử; config được ghi theo schema `00`. |
-| Notebook | Ghi `config.json` nguyên tử trước khi train; điều phối `RUN_MODE`, hai giai đoạn, truyền `start_epoch`, đóng writer; dùng utilities theo `04_utils.md`. |
-
-### 2.9. Kế hoạch kiểm thử
-
-| Mã | Kiểm tra | Kỳ vọng |
-| :--- | :--- | :--- |
-| E1 | `train_step` trên mô hình đồ chơi và DataLoader nhiều batch | Trả loss/accuracy trung bình theo số mẫu; chỉ tham số trainable đổi. |
-| E2 | `evaluate_step` trên mô hình đồ chơi | Không tạo gradient, không đổi weights, mô hình ở eval. |
-| E3 | Train với batch cuối nhỏ và optimizer `lr=0` | Loss bằng loss tính trên toàn bộ tập, không phải trung bình không trọng số giữa các batch. |
-| E4 | `train(epochs=3, start_epoch=5)` với writer giả | Chạy đúng 3 epoch; TensorBoard step là 6, 7, 8. |
-| E5 | Scripted validation scores và trạng thái model thay đổi mỗi epoch | `best_model.pth` và `restore_best` khớp epoch tốt nhất theo monitor. |
-| E6 | Giả lập gián đoạn sau một epoch rồi gọi lại `resume=True` | Tiếp tục từ phase epoch kế tiếp đến đúng tổng `epochs`; model, optimizer, history, best state được khôi phục. |
-| E7 | Resume với checkpoint thiếu hoặc config phase không khớp | Báo lỗi rõ ràng, không tự bỏ qua checkpoint hay bắt đầu lại. |
-| E8 | Kiểm tra history/checkpoint sau mỗi epoch và mô phỏng lỗi ghi tệp | History/checkpoint được cập nhật nguyên tử; file cũ không hỏng. |
-| E9 | `train_mode_fn` giữ BatchNorm đóng băng ở eval; trường hợp `writer=None` | BN frozen không đổi running stats; train không yêu cầu writer. |
-| E10 | Epoch timing trên CUDA nếu môi trường hỗ trợ | Đồng bộ trước/sau vùng đo; CPU không gọi CUDA synchronize. |
-
-Chạy kiểm thử bằng `pytest tests/test_engine.py -v`; kiểm thử CUDA được bỏ qua có điều kiện khi không có CUDA.
-
-### 2.10. Mở rộng
-
-* **Scheduler learning rate:** thêm tham số `scheduler` tùy chọn vào `train` và gọi `scheduler.step()` cuối mỗi epoch; cột `lr` trong `history` đã sẵn sàng phản ánh thay đổi.
-* **Early stopping:** thêm tham số `patience`; dựa trên cùng logic cải thiện của `monitor`.
-* **Mixed precision (AMP):** bọc `forward`/`backward` trong `torch.autocast` và `GradScaler`; không ảnh hưởng giao diện hàm.
-* **Nhiều worker:** nếu `num_workers > 0`, bổ sung `seed_worker` và `generator` cho `DataLoader` để giữ tái lập.
-
-### 2.11. Quyết định thiết kế của nhóm so với chuẩn từ tài liệu
-
-| Hạng mục | Có trong tài liệu chính thức | Quyết định thiết kế của nhóm |
-| :--- | :--- | :--- |
-| Mẫu `train_step` / `evaluate_step` / `train` | Có (Learn PyTorch ch.05) | |
-| `torch.utils.tensorboard.SummaryWriter` | Có (PyTorch) | |
-| `model.train()` / `model.eval()` do BatchNorm | Có (torchvision) | |
-| Trung bình loss có trọng số theo số mẫu | | Có |
-| `train_mode_fn` để tách engine khỏi `ModelConfig` | | Có |
-| Chọn mô hình tốt nhất theo Validation và `restore_best` | | Có |
-| `start_epoch` để nối đường cong hai giai đoạn | | Có |
-| Cấu trúc history và chọn checkpoint tốt nhất theo Validation | | Có |
-| Resume theo epoch và nối tiếp TensorBoard hai giai đoạn | | Có |
-
-### 2.12. Tài liệu tham khảo
-
-1. Daniel Bourke, *Learn PyTorch for Deep Learning*, chương 05 (Going Modular: `engine.py`) và chương 07 (Experiment Tracking): https://www.learnpytorch.io
-2. PyTorch, `torch.utils.tensorboard`: https://docs.pytorch.org
-3. PyTorch / torchvision, *Models and pre-trained weights* (hành vi train/eval của BatchNorm): https://docs.pytorch.org/vision/stable/models.html
-
----
-
-## PHẦN III: NHẬT KÝ QUYẾT ĐỊNH THIẾT KẾ
-
-Quyết định về seed/device, TensorBoard writer, artifacts và test utilities được ghi tại `docs/define&designt/04_utils.md`. Các quyết định thuộc riêng engine:
-
-| Chủ đề | Quyết định |
-| :--- | :--- |
-| Chỉ số chọn checkpoint | `val_acc` mặc định; có hỗ trợ `val_loss`. |
-| Hai giai đoạn | Optimizer mới khi unfreeze; `start_epoch=5` cho giai đoạn Fine-Tuning. |
-| Early stopping/scheduler | Ngoài phạm vi; dùng số epoch cố định theo `00`. |
+1. PyTorch Tutorials, *Optimizing Model Parameters* (vòng lặp train/validation): https://docs.pytorch.org/tutorials/beginner/basics/optimization_tutorial.html
+2. PyTorch Docs, *TensorBoard `SummaryWriter`*: https://docs.pytorch.org/docs/stable/tensorboard.html
+3. Daniel Bourke, *Learn PyTorch for Deep Learning*, chương 05 (`engine.py`): https://www.learnpytorch.io

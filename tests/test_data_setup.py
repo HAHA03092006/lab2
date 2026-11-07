@@ -176,6 +176,52 @@ def test_d11_unknown_model_name():
         get_pretrained_transform(model_name="foo")
 
 
+def test_d11b_unknown_weights_name():
+    """Unknown preprocessing weights are rejected with a clear error."""
+    with pytest.raises(ValueError, match="Unknown weights"):
+        get_pretrained_transform(model_name="resnet18", weights_name="UNKNOWN")
+
+
+def test_factory_uses_selected_transform_configuration(monkeypatch):
+    """DataLoader fallback passes architecture and preprocessing preset to data_setup."""
+    import going_modular.data_setup as data_setup
+
+    calls = []
+
+    class TinyCIFAR10:
+        classes = [str(index) for index in range(10)]
+        targets = [label for label in range(10) for _ in range(2)]
+
+        def __init__(self, *, train, **kwargs):
+            self.train = train
+
+        def __len__(self):
+            return len(self.targets)
+
+        def __getitem__(self, index):
+            return torch.zeros(3, 32, 32), self.targets[index]
+
+    def fake_transform(*, augment, model_name, weights_name):
+        calls.append((augment, model_name, weights_name))
+        return None
+
+    monkeypatch.setattr(data_setup.datasets, "CIFAR10", TinyCIFAR10)
+    monkeypatch.setattr(data_setup, "get_pretrained_transform", fake_transform)
+
+    create_train_val_test_dataloaders(
+        batch_size=2,
+        val_size=10,
+        transform_model="resnet18",
+        transform_weights="IMAGENET1K_V1",
+        download=False,
+    )
+
+    assert calls == [
+        (True, "resnet18", "IMAGENET1K_V1"),
+        (False, "resnet18", "IMAGENET1K_V1"),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Nhóm E: Wrapper và cách ly biến đổi
 # ---------------------------------------------------------------------------

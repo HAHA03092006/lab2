@@ -24,12 +24,8 @@ def build_model(cfg: ModelConfig) -> nn.Module:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """Immutable model configuration.
 
-    Chứa toàn bộ lựa chọn thiết kế mô hình để thí nghiệm tái lập được.
-    Không chứa thông tin huấn luyện (lr, epochs, batch_size, seed).
-    """
-
+    
     arch: str = "resnet18"
     num_classes: int = 10
     weights: str | None = "IMAGENET1K_V1"
@@ -198,7 +194,7 @@ def _build_model_from_config(cfg: ModelConfig) -> nn.Module:
 # ---------------------------------------------------------------------------
 
 def get_transforms(cfg: ModelConfig, weights: str | None = None):
-    """Lấy transform tiền xử lý từ weights preset đã chọn.
+    """Compatibility wrapper for the canonical transform factory in data_setup.
 
     Tham số weights có thể override cfg.weights, cho phép tạo transform
     độc lập với trọng số dùng để khởi tạo mô hình (chế độ reuse).
@@ -210,8 +206,12 @@ def get_transforms(cfg: ModelConfig, weights: str | None = None):
             "Không xác định được trọng số để lấy transform. "
             "Truyền weights vào get_transforms hoặc đặt cfg.weights."
         )
-    w = _resolve_weights(cfg.arch, weights_name)
-    return w.transforms()
+    from .data_setup import get_pretrained_transform
+
+    return get_pretrained_transform(
+        model_name=cfg.arch,
+        weights_name=weights_name,
+    )
 
 
 # ---------------------------------------------------------------------------

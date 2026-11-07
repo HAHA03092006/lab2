@@ -16,16 +16,23 @@ from torchvision.models import ResNet18_Weights, VGG16_Weights
 def get_pretrained_transform(
     augment: bool = False,
     model_name: Literal["vgg16", "resnet18"] = "vgg16",
+    weights_name: str = "IMAGENET1K_V1",
 ) -> transforms.Compose:
-
     if model_name == "vgg16":
-        weights = VGG16_Weights.IMAGENET1K_V1
+        weights_enum = VGG16_Weights
     elif model_name == "resnet18":
-        weights = ResNet18_Weights.IMAGENET1K_V1
+        weights_enum = ResNet18_Weights
     else:
         raise ValueError(
             f"Unknown model_name '{model_name}'. Choose 'vgg16' or 'resnet18'."
         )
+
+    try:
+        weights = weights_enum[weights_name]
+    except (KeyError, AttributeError) as exc:
+        raise ValueError(
+            f"Unknown weights '{weights_name}' for model '{model_name}'."
+        ) from exc
 
     base_ops = []
     if augment:
@@ -134,21 +141,23 @@ def create_train_val_test_dataloaders(
     generator: Optional[torch.Generator] = None,
     download: bool = True,
     transform_model: Literal["vgg16", "resnet18"] = "vgg16",
+    transform_weights: str = "IMAGENET1K_V1",
 ) -> Tuple[DataLoader, DataLoader, DataLoader, List[str]]:
     """Create stratified train/validation loaders and an untouched CIFAR-10 test loader.
 
     Train and validation use the same underlying CIFAR-10 training data but
     can have different transforms. The split is stratified and reproducible
     for a fixed ``seed``. ``transform_model`` selects the matching pretrained
-    weights preset when explicit transforms are not provided.
+    weights preset when explicit transforms are not provided. ``transform_weights``
+    selects the preset independently of model initialization weights.
     """
     if train_transform is None:
         train_transform = get_pretrained_transform(
-            augment=True, model_name=transform_model
+            augment=True, model_name=transform_model, weights_name=transform_weights
         )
     if eval_transform is None:
         eval_transform = get_pretrained_transform(
-            augment=False, model_name=transform_model
+            augment=False, model_name=transform_model, weights_name=transform_weights
         )
 
     raw_train_data = datasets.CIFAR10(
