@@ -40,7 +40,7 @@ Mục tiêu:
 | :--- | :--- |
 | **Đầu vào** | Mô hình đã huấn luyện (hoặc nạp lại ở chế độ `reuse`), `test_dataloader` (`shuffle=False`), `class_names`, `history` của từng thí nghiệm, đường dẫn `best_model.pth` |
 | **Đầu ra** | Bản ghi kết quả Test (`dict` sẵn sàng ghi JSON), bản ghi chi phí, biểu đồ (`Figure`), bảng so sánh dạng Markdown |
-| **Đầu ra phụ** | Danh sách cặp lớp nhầm nhiều nhất; chỉ mục các ảnh bị dự đoán sai; tệp ảnh trong `artifacts/figures/` |
+| **Đầu ra phụ** | Danh sách cặp lớp nhầm nhiều nhất; chỉ mục các ảnh bị dự đoán sai; tệp ảnh trong `outputs/YYYY-MM-DD/<RUN_ID>/<EVAL_ID>/` |
 
 ### 1.3. Yêu cầu chức năng
 
@@ -112,7 +112,7 @@ mô hình đã nạp (02/03) ┼──► run_inference ──► InferenceResul
 | `repeats` | `10` | Số lượt đo; kết quả lấy **trung vị** để bớt ảnh hưởng của lượt nhiễu. |
 | batch đo | một batch cố định lấy từ Test | Dùng cùng một batch cho mọi mô hình để so sánh công bằng. |
 
-**Tệp mới trong artifacts:** `test_metrics.json` (bổ sung cho `best_model.pth`, `history.json`, `config.json` ở `03`).
+**Tệp mới:** `test_metrics.json` (bổ sung cho `best_model.pth`, `history.json`, `config.json` ở `03`). Lưu vào `outputs/YYYY-MM-DD/<RUN_ID>/<EVAL_ID>/` theo quy ước ở `00` mục 7.4.
 
 ```json
 {
@@ -217,7 +217,7 @@ Ví dụ kiểm chứng: $p = 0.5$, $n = 100$ cho khoảng xấp xỉ $[0.4038, 
 
 **Nguyên tắc chung:** mọi hàm `plot_*` tạo `Figure`, gọi `finalize_figure(fig, save_path, show, close=True)` rồi **trả về `Figure`**.
 
-* Trả về `Figure` để notebook hiển thị, lưu vào `artifacts/figures/`, hoặc ghi lên TensorBoard bằng `add_figure`; đồng thời test kiểm tra được kết quả.
+* Trả về `Figure` để notebook hiển thị, lưu vào `outputs/YYYY-MM-DD/<RUN_ID>/<EVAL_ID>/`, hoặc ghi lên TensorBoard bằng `add_figure`; đồng thời test kiểm tra được kết quả.
 * `finalize_figure` dùng `fig.savefig` (không dùng trạng thái toàn cục của pyplot) và `plt.close(fig)` để tránh rò bộ nhớ.
 * Không đặt backend trong thư viện; khi chạy trên máy không có màn hình dùng backend `Agg` (biến môi trường `MPLBACKEND=Agg`).
 
@@ -357,5 +357,5 @@ Tất cả 8 điểm thiết kế đánh giá và đối sánh đã được th�
 | 4 | **Phương pháp khoảng tin cậy** | Wilson Score 95% | Chuẩn thống kê, không tràn biên $[0, 1]$ |
 | 5 | **`epoch_time` trong chi phí** | Tính tổng cả Train và Validation | Đồng bộ với `03_engine.md` |
 | 6 | **Lấy mean/std từ weights** | Ưu tiên lấy từ preprocessing preset/transform của torchvision weights | Chỉ fallback ImageNet khi config xác nhận `IMAGENET1K_V1`; nếu không thì yêu cầu stats hoặc báo lỗi |
-| 7 | **Định dạng file ảnh biểu đồ** | PNG, 150 dpi | Lưu vào `artifacts/figures/` phục vụ báo cáo |
+| 7 | **Định dạng file ảnh biểu đồ** | PNG, 150 dpi | Lưu vào `outputs/YYYY-MM-DD/<RUN_ID>/<EVAL_ID>/` phục vụ báo cáo |
 | 8 | **Đánh giá nâng cao (McNemar)** | Giữ ở mục Mở rộng | Wilson CI mô tả từng accuracy, không phải kiểm định chênh lệch giữa các mô hình |

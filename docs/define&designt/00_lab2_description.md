@@ -127,24 +127,24 @@ Luồng: `Notebook → data_setup + model_builder → engine.train → artifacts
 
 Mỗi run `v2` chỉ thay **một** yếu tố so với baseline. Đây là khảo sát có kiểm soát, không phải grid search.
 
-### 7.4. Artifacts
+### 7.4. Artifacts, outputs và logs
 
-Mỗi thí nghiệm lưu trong `artifacts/<tên thí nghiệm>/`:
+Mỗi thí nghiệm chia thành ba nhánh:
 
-| File | Nội dung | Commit Git |
-| :--- | :--- | :--- |
-| `config.json` | Cấu hình của run | Có |
-| `history.json` | Loss, accuracy, LR, thời gian mỗi epoch | Có |
-| `test_metrics.json` | Kết quả Test và dự đoán theo mẫu | Có |
-| `best_model.pth` | Trọng số tốt nhất theo Validation | Không |
-| `last_checkpoint.pth` | Trạng thái để tiếp tục huấn luyện | Không |
+| Nhánh | Đường dẫn | Nội dung | Commit Git |
+|-------|-----------|----------|------------|
+| `artifacts/` | `artifacts/<RUN_ID>/` | Trạng thái train để resume/reuse: `config.json`, `history.json`, `best_model.pth`, `last_checkpoint.pth` | Có (trừ `.pth`) |
+| `outputs/` | `outputs/YYYY-MM-DD/<RUN_ID>/<EVAL_ID>/` | Kết quả đánh giá: `test_metrics.json`, ảnh confusion matrix, per-class, dự đoán sai | Có (JSON/PNG) |
+| `logs/` | `logs/<RUN_ID>/<SESSION_ID>/` | TensorBoard events cho từng phiên train/resume | Không |
 
-Biểu đồ lưu ở `artifacts/figures/` và được commit. File `.pth` phát hành ngoài Git (GitHub Release hoặc Drive); `README.md` ghi link tải.
+`YYYY-MM-DD` là ngày theo múi giờ `Asia/Ho_Chi_Minh`; `EVAL_ID` và `SESSION_ID` là timestamp duy nhất (`YYYYMMDD-HHMMSS+07:00`) để các lần đánh giá/log trong cùng ngày không ghi đè nhau.
+
+File `.pth` phát hành ngoài Git (GitHub Release hoặc Drive); `README.md` ghi link tải.
 
 ### 7.5. Chế độ chạy
 
 - **`train`:** huấn luyện và lưu artifacts. Không ghi đè run đã tồn tại.
-- **`reuse`:** nạp kiến trúc (`weights=None`) rồi nạp `best_model.pth`. Thiếu file huấn luyện thì báo lỗi, **không** tự train. Thiếu riêng `test_metrics.json` thì đánh giá Test một lần rồi lưu.
+- **`reuse`:** nạp kiến trúc (`weights=None`) rồi nạp `best_model.pth`. Thiếu file huấn luyện thì báo lỗi, **không** tự train. Thiếu riêng `test_metrics.json` thì đánh giá Test một lần rồi lưu vào `outputs/`.
 
 ### 7.6. Quy ước chung
 

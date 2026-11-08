@@ -41,7 +41,7 @@ Lab 2 yêu cầu xây dựng quy trình **Transfer Learning** hoàn chỉnh trê
 - `set_train_mode(model, cfg)` để giữ BN frozen ở eval
 - `get_param_groups(model, cfg, lr_head, lr_backbone)` cho optimizer 2 giai đoạn
 - `count_params(model) -> {total, trainable, frozen}`
-- `describe_model(model)` / `format_model_summary(model)` cho Step 3
+- `describe_model(model)` cho Step 3
 - `unfreeze_last_n` logic cho Fine-Tuning
 - Validation cấu hình: kiến trúc lạ, dropout, kết hợp cờ mâu thuẫn
 

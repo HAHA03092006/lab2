@@ -301,6 +301,80 @@ def create_writer(experiment_name: str, log_root: str = "runs") -> SummaryWriter
 
 
 # ---------------------------------------------------------------------------
+# Phase 5: dated outputs and session logging
+# ---------------------------------------------------------------------------
+
+import hashlib  # noqa: E402  (module-level import placed near use)
+from datetime import datetime, timezone  # noqa: E402
+
+HOCHI_MINH_TZ = None
+
+try:
+    from zoneinfo import ZoneInfo
+    HOCHI_MINH_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+except ImportError:  # pragma: no cover - Python < 3.9 fallback
+    HOCHI_MINH_TZ = timezone(__import__("datetime").timedelta(hours=7))
+
+
+def make_session_id(tz=HOCHI_MINH_TZ) -> str:
+    """Tạo session ID duy nhất theo múi giờ đã cho (mặc định Asia/Ho_Chi_Minh).
+
+    Định dạng: YYYYMMDD-HHMMSS+07:00. Đảm bảo các phiên trong cùng ngày
+    không ghi đè nhau.
+    """
+    now = datetime.now(tz)
+    return now.strftime("%Y%m%d-%H%M%S%z")
+
+
+def make_eval_id(tz=HOCHI_MINH_TZ) -> str:
+    """Tạo evaluation ID duy nhất (cùng định dạng session ID)."""
+    return make_session_id(tz)
+
+
+def dated_dir(root: str | Path, date_str: str | None = None, tz=HOCHI_MINH_TZ) -> Path:
+    """Tạo thư mục theo ngày dưới root: root/YYYY-MM-DD/."""
+    if date_str is None:
+        now = datetime.now(tz)
+        date_str = now.strftime("%Y-%m-%d")
+    return Path(root) / date_str
+
+
+def make_eval_output_dir(
+    output_root: str | Path,
+    run_id: str,
+    date_str: str | None = None,
+    eval_id: str | None = None,
+    tz=HOCHI_MINH_TZ,
+) -> Path:
+    """Tạo thư mục đầu ra đánh giá: output_root/YYYY-MM-DD/<RUN_ID>/<EVAL_ID>/."""
+    day_dir = dated_dir(output_root, date_str, tz)
+    if eval_id is None:
+        eval_id = make_eval_id(tz)
+    return day_dir / run_id / eval_id
+
+
+def make_session_log_dir(
+    log_root: str | Path,
+    run_id: str,
+    session_id: str | None = None,
+    tz=HOCHI_MINH_TZ,
+) -> Path:
+    """Tạo thư mục log TensorBoard cho phiên: log_root/<RUN_ID>/<SESSION_ID>/."""
+    if session_id is None:
+        session_id = make_session_id(tz)
+    return Path(log_root) / run_id / session_id
+
+
+def file_sha256(path: str | Path) -> str:
+    """Tính mã băm SHA-256 của file, dùng cho cache đánh giá theo checkpoint."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+# ---------------------------------------------------------------------------
 # Phase 4: checkpoint resume
 # ---------------------------------------------------------------------------
 

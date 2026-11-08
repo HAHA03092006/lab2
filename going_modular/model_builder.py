@@ -1,9 +1,3 @@
-"""Pretrained image classifiers adapted to the CIFAR-10 dataset.
-
-Phase 2: configuration-driven model builder with ModelConfig, ARCH_SPECS
-registry, build_model, get_transforms, set_train_mode, get_param_groups,
-count_params and describe_model.
-"""
 
 from __future__ import annotations
 
@@ -131,11 +125,6 @@ def _validate(cfg: ModelConfig) -> None:
         )
 
 
-def _dummy_model(arch: str) -> nn.Module:
-    """Tạo model trống (weights=None) chỉ để tra cứu cấu trúc khối."""
-    return _load_torchvision(arch, None)
-
-
 def _load_torchvision(arch: str, weights_name: str | None) -> nn.Module:
     """Nạp kiến trúc torchvision với weights enum cụ thể (không dùng pretrained=True/DEFAULT)."""
     if arch == "resnet18":
@@ -194,12 +183,7 @@ def _build_model_from_config(cfg: ModelConfig) -> nn.Module:
 # ---------------------------------------------------------------------------
 
 def get_transforms(cfg: ModelConfig, weights: str | None = None):
-    """Compatibility wrapper for the canonical transform factory in data_setup.
 
-    Tham số weights có thể override cfg.weights, cho phép tạo transform
-    độc lập với trọng số dùng để khởi tạo mô hình (chế độ reuse).
-    Nếu không xác định được weights, báo ValueError.
-    """
     weights_name = weights if weights is not None else cfg.weights
     if weights_name is None:
         raise ValueError(
@@ -219,12 +203,7 @@ def get_transforms(cfg: ModelConfig, weights: str | None = None):
 # ---------------------------------------------------------------------------
 
 def set_train_mode(model: nn.Module, cfg: ModelConfig) -> None:
-    """Đưa model về train mode; giữ BatchNorm đã đóng băng ở eval.
 
-    Khi freeze_bn_stats=True: mọi BatchNorm có toàn bộ tham số requires_grad=False
-    được đưa về eval để không cập nhật running statistics. BN thuộc khối trainable
-    vẫn ở train mode.
-    """
     model.train()
     if cfg.freeze_bn_stats:
         for module in model.modules():
@@ -312,6 +291,4 @@ def describe_model(model: nn.Module, cfg: ModelConfig | None = None) -> str:
     return "\n".join(lines)
 
 
-def format_model_summary(model: nn.Module, cfg: ModelConfig | None = None) -> str:
-    """Alias của describe_model (kept for naming flexibility)."""
-    return describe_model(model, cfg)
+

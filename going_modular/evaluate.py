@@ -1,17 +1,4 @@
-"""
-Contains functions for evaluating a trained PyTorch model on a test set:
-single-pass inference, confusion matrix, classification metrics, confidence
-interval, cost measurement (time, memory, file size), error analysis, run
-comparison and plotting helpers.
 
-Design notes:
-  * Pure PyTorch (no scikit-learn).
-  * Inference runs ONCE per dataloader; loss, predictions and probabilities
-    are all derived from the stored logits.
-  * Every plot_* function returns the matplotlib Figure so it can be shown in
-    a notebook, saved, or sent to TensorBoard (writer.add_figure).
-  * Confusion matrix convention: rows = true classes, columns = predictions.
-"""
 import math
 import statistics
 import time
@@ -31,17 +18,7 @@ Device = Union[str, torch.device]
 # ----------------------------------------------------------------------------
 def finalize_figure(fig: Figure, save_path: Optional[str] = None,
                     show: bool = False, close: bool = True) -> Figure:
-    """Saves and/or shows a figure, optionally closes it, and returns it.
-
-    Args:
-        fig: The figure to finalize.
-        save_path: Where to save the figure. None means do not save.
-        show: Whether to open an interactive window.
-        close: Whether to release the figure from pyplot (avoids memory leaks).
-
-    Returns:
-        The same figure (still usable after closing, e.g. for add_figure).
-    """
+   
     if save_path is not None:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -76,20 +53,7 @@ def run_inference(model: torch.nn.Module,
                   dataloader: torch.utils.data.DataLoader,
                   device: Device = "cpu",
                   loss_fn: Optional[Callable] = None) -> InferenceResult:
-    """Runs the model once over a DataLoader and keeps logits and labels.
 
-    Args:
-        model: A trained PyTorch model.
-        dataloader: A DataLoader (use shuffle=False so order is stable).
-        device: Device to run the model on.
-        loss_fn: Optional loss (e.g. CrossEntropyLoss with mean reduction).
-
-    Returns:
-        An InferenceResult. The loss equals the sample-weighted mean loss.
-
-    Raises:
-        ValueError: If the dataloader yields no batches.
-    """
     model.to(device)
     model.eval()
     logits_all, targets = [], []
@@ -106,16 +70,7 @@ def run_inference(model: torch.nn.Module,
 
 
 def predict_probs(model: torch.nn.Module, images: torch.Tensor, device: Device = "cpu") -> torch.Tensor:
-    """Returns softmax probabilities for a batch of images.
 
-    Args:
-        model: A trained PyTorch model.
-        images: Tensor of shape [N, C, H, W].
-        device: Device to run the model on.
-
-    Returns:
-        A CPU tensor of shape [N, num_classes] whose rows sum to 1.
-    """
     model.to(device)
     model.eval()
     with torch.inference_mode():
@@ -140,18 +95,7 @@ def predict_dataloader(model: torch.nn.Module,
 # 3. Confusion matrix and classification metrics
 # ----------------------------------------------------------------------------
 def compute_confusion_matrix(*, y_true: torch.Tensor, y_pred: torch.Tensor, num_classes: int) -> torch.Tensor:
-    """Builds a confusion matrix: rows are true classes, columns are predictions.
 
-    Arguments are keyword-only on purpose: swapping y_true and y_pred would
-    silently transpose the matrix.
-
-    Returns:
-        An integer tensor of shape [num_classes, num_classes].
-
-    Raises:
-        ValueError: If shapes differ, tensors are not 1-D, num_classes < 1,
-            or any label is outside [0, num_classes - 1].
-    """
     if num_classes < 1:
         raise ValueError("num_classes must be >= 1")
     if y_true.ndim != 1 or y_pred.ndim != 1 or y_true.shape != y_pred.shape:
@@ -166,15 +110,7 @@ def compute_confusion_matrix(*, y_true: torch.Tensor, y_pred: torch.Tensor, num_
 
 
 def classification_metrics(cm: torch.Tensor) -> Dict[str, Union[float, torch.Tensor]]:
-    """Computes accuracy, per-class precision/recall/F1 and macro averages.
 
-    Division by zero is defined as 0 (never NaN): a class that is never
-    predicted has precision 0. Macro averages include every class.
-
-    Returns:
-        Dict with: accuracy (float), precision/recall/f1 (float tensors [C]),
-        support (long tensor [C]), macro_precision/macro_recall/macro_f1 (float).
-    """
     if cm.ndim != 2 or cm.shape[0] != cm.shape[1]:
         raise ValueError("cm must be a square 2-D tensor")
     cm = cm.float()
@@ -247,13 +183,7 @@ def wilson_interval(correct: int, total: int, z: float = 1.96) -> Tuple[float, f
 def misclassified_indices(y_true: torch.Tensor, y_pred: torch.Tensor,
                           logits: Optional[torch.Tensor] = None,
                           max_items: Optional[int] = None) -> torch.Tensor:
-    """Returns positions of wrong predictions.
 
-    Order is the dataset order. If logits are given, the order is by
-    descending confidence of the (wrong) predicted class instead, so the most
-    confident mistakes come first. Position i maps to dataset sample i only
-    when the DataLoader was created with shuffle=False.
-    """
     wrong = (y_pred != y_true).nonzero().flatten()
     if logits is not None and wrong.numel() > 0:
         conf = torch.softmax(logits[wrong], dim=1).max(dim=1).values
@@ -264,25 +194,7 @@ def misclassified_indices(y_true: torch.Tensor, y_pred: torch.Tensor,
 
 
 def get_mean_std(transform, transform_weights=None) -> Tuple[List[float], List[float]]:
-    """Reads mean/std from a transform (or the first element of a Compose) that has them.
 
-    Works with torchvision's weights.transforms() and with Normalize, so the
-    constants never need to be hard-coded.
-
-    Args:
-        transform: A torchvision transform (or Compose) exposing mean/std.
-        transform_weights: Optional torchvision WeightsEnum member whose
-            preprocessing preset exposes mean/std (used as fallback only when
-            the transform itself has no stats). The preset is inspected without
-            downloading model weights.
-
-    Returns:
-        (mean, std) as lists of floats.
-
-    Raises:
-        ValueError: If no element exposes both mean and std and the fallback
-            weights preset is missing or does not expose stats.
-    """
     for t in list(getattr(transform, "transforms", [transform])):
         mean, std = getattr(t, "mean", None), getattr(t, "std", None)
         if mean is not None and std is not None:
@@ -317,18 +229,7 @@ def denormalize(images: torch.Tensor, mean: Sequence[float], std: Sequence[float
 # ----------------------------------------------------------------------------
 def measure_inference_time(model: torch.nn.Module, images: torch.Tensor,
                            device: Device = "cpu", warmup: int = 3, repeats: int = 10) -> Dict:
-    """Measures inference latency on a fixed batch (median of several runs).
 
-    Warm-up runs are discarded (CUDA/cuDNN initialisation). On CUDA the clock
-    is read only after torch.cuda.synchronize(), because GPU work is asynchronous.
-
-    Returns:
-        Dict with batch_size, ms_per_batch, ms_per_image, repeats, device,
-        peak_gpu_mb (None on CPU).
-
-    Raises:
-        ValueError: If warmup < 0 or repeats < 1.
-    """
     if warmup < 0 or repeats < 1:
         raise ValueError("warmup must be >= 0 and repeats must be >= 1")
     device = torch.device(device)
@@ -372,23 +273,7 @@ def file_size_mb(path: str) -> float:
 def build_cost_record(num_params: Dict[str, int], model_path: Optional[str] = None,
                       timing: Optional[Dict] = None, history: Optional[Dict] = None,
                       source_history: Optional[Dict] = None) -> Dict:
-    """Collects cost figures into one JSON-ready dict (None when unavailable).
 
-    Args:
-        num_params: Output of model_builder.count_params (keys total, trainable).
-        model_path: Path of best_model.pth, used for the file size.
-        timing: Output of measure_inference_time.
-        history: Output of engine.train; train_time_phase_s is the sum of
-            history["epoch_time"] for the current phase.
-        source_history: Optional history from a previous phase (e.g. baseline
-            before fine-tuning). train_time_total_s adds its epoch_time to the
-            current phase time.
-
-    Returns:
-        Dict with num_params_total, num_params_trainable, model_file_mb,
-        ms_per_image, ms_per_batch, timing_batch_size, peak_gpu_mb, device,
-        train_time_phase_s, train_time_total_s.
-    """
     timing = timing or {}
     train_time_phase = None
     if history and history.get("epoch_time"):
@@ -420,13 +305,7 @@ def build_cost_record(num_params: Dict[str, int], model_path: Optional[str] = No
 # 6. Summaries and comparison
 # ----------------------------------------------------------------------------
 def evaluate_predictions(result: InferenceResult, class_names: Sequence[str]) -> Dict:
-    """Turns an InferenceResult into one JSON-serialisable record of test metrics.
 
-    Returns a dict with flat metrics keys (num_samples, loss, accuracy,
-    accuracy_ci95, macro_precision, macro_recall, macro_f1, per_class,
-    confusion_matrix) plus a ``predictions`` block (y_true, y_pred,
-    confidence — JSON-safe lists, no logits).
-    """
     n = len(class_names)
     cm = compute_confusion_matrix(y_true=result.y_true, y_pred=result.y_pred, num_classes=n)
     m = classification_metrics(cm)
@@ -465,12 +344,7 @@ def _fmt(value, template: str) -> str:
 
 
 def format_comparison_table(runs: Dict[str, Dict]) -> str:
-    """Builds a Markdown comparison table of experiments.
 
-    Args:
-        runs: name -> {"metrics": evaluate_predictions(...), "cost": build_cost_record(...),
-              optional "best_val_acc": float}. Missing values show as an em dash.
-    """
     header = ("| Run | Val acc | Test acc | 95% CI | Macro F1 | Params | Trainable | "
               "Model (MB) | ms/image | Train time phase (s) | Train time total (s) |")
     lines = [header, "|" + " :--- |" * 11]
@@ -553,17 +427,7 @@ def plot_sample_predictions(images: Sequence[torch.Tensor], true_labels: Sequenc
                             pred_labels: Sequence[int], class_names: Sequence[str],
                             ncols: int = 3, save_path: Optional[str] = None,
                             show: bool = False) -> Figure:
-    """Plots a grid of color images. Title is green with a check mark if
-    correct, red with a cross if wrong (symbol + color, so it is not
-    color-only).
 
-    Args:
-        images: List of tensors [3, H, W] with values in [0, 1]
-            (use denormalize() on normalized tensors first).
-
-    Raises:
-        ValueError: If there are no images or the sequences differ in length.
-    """
     n = len(images)
     if n == 0:
         raise ValueError("No images to plot")
@@ -588,14 +452,8 @@ def plot_sample_predictions(images: Sequence[torch.Tensor], true_labels: Sequenc
 def plot_history(histories: Dict[str, Dict[str, List[float]]],
                  start_epochs: Optional[Dict[str, int]] = None,
                  save_path: Optional[str] = None, show: bool = False) -> Figure:
-    """Plots loss and accuracy curves (validation = solid, train = dashed).
 
-    Args:
-        histories: Mapping of run name to the dict returned by engine.train().
-        start_epochs: Optional run name -> epochs already done before that run
-            (e.g. {"finetune": 5}), so a fine-tuning curve continues where the
-            first stage ended instead of overlapping it.
-    """
+
     start_epochs = start_epochs or {}
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     for name, h in histories.items():

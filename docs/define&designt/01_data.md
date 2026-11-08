@@ -92,7 +92,7 @@ Khi caller không truyền transform, dùng `get_pretrained_transform(augment, m
 
 Ảnh 32×32 bị phóng 8 lần nên khá mờ; cần lưu ý khi phân tích kết quả.
 
-## 7. Giao diện (API)
+## 7. Giao diện hàm và ngoại lệ
 
 | Hàm | Đầu vào | Đầu ra | Lỗi |
 | :--- | :--- | :--- | :--- |

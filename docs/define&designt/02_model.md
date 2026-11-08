@@ -127,7 +127,7 @@ Với Fine-Tuning `unfreeze_last_n=1`: BN của `layer4` ở train; `bn1`, `laye
 
 Không tạo nhóm rỗng, không trùng, không sót.
 
-## 6. API
+## 6. Giao diện hàm và ngoại lệ
 
 | Hàm | Đầu vào | Đầu ra | Lỗi |
 | :--- | :--- | :--- | :--- |

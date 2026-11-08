@@ -23,7 +23,6 @@ from going_modular.model_builder import (
     build_model,
     count_params,
     describe_model,
-    format_model_summary,
     get_param_groups,
     get_transforms,
     set_train_mode,
@@ -394,7 +393,4 @@ def test_describe_model_returns_summary():
     assert "Frozen parameters" in summary
 
 
-def test_format_model_summary_alias():
-    """format_model_summary là alias của describe_model."""
-    model = build_model(ModelConfig(arch="resnet18", weights=None))
-    assert format_model_summary(model) == describe_model(model)
+

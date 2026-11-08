@@ -77,7 +77,7 @@
 - [x] Đối chiếu số lượng tham số kỳ vọng theo `02_model.md`:
   - [x] ResNet-18: total `11,181,642`; feature-extraction trainable `5,130`.
   - [x] VGG16: total `134,301,514`; feature-extraction trainable `40,970`.
-- [x] Triển khai `describe_model` và/hoặc `format_model_summary` theo quyết định trong kế hoạch để phục vụ khảo sát kiến trúc Step 3, không phụ thuộc `torchinfo`.
+- [x] Triển khai `describe_model` theo quyết định trong kế hoạch để phục vụ khảo sát kiến trúc Step 3, không phụ thuộc `torchinfo`.
 - [x] Xác nhận summary thể hiện tối thiểu kiến trúc/head và tổng/trainable/frozen parameters; không tải pretrained weights chỉ để mô tả cấu trúc.
 
 ## 7. Triển khai `tests/test_model_builder.py`

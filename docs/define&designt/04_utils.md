@@ -83,6 +83,8 @@ Notebook ── set_seed / get_device / get_env_info / create_writer
 
 `create_writer(experiment_name, log_root="runs")` trả về `torch.utils.tensorboard.SummaryWriter` tại `runs/<experiment_name>`. `engine.py` ghi scalar; Notebook chịu trách nhiệm `close()` writer khi hoàn tất, kể cả khi có lỗi (dùng `try/finally` hoặc context quản lý tương đương).
 
+`make_session_log_dir(log_root, run_id, session_id)` tạo thư mục `log_root/<run_id>/<session_id>/` cho mỗi phiên train/resume, giúp các phiên trong cùng ngày không ghi đè nhau. `SESSION_ID` là timestamp theo múi giờ `Asia/Ho_Chi_Minh` (`YYYYMMDD-HHMMSS+07:00`).
+
 ### 2.4. Chính sách artifacts
 
 | File | Nội dung | Sinh bởi |
@@ -106,7 +108,7 @@ Notebook ── set_seed / get_device / get_env_info / create_writer
 7. `artifacts_exist` kiểm tra đủ `best_model.pth`, `history.json`, `config.json`; `test_metrics.json` là tùy chọn cho reuse inference.
 8. Resume checkpoint lưu phase config để từ chối tiếp tục nếu cấu hình run không khớp; checkpoint đánh dấu số epoch đã hoàn tất trong phase. Không lưu trạng thái RNG.
 
-### 2.6. Giao diện dự kiến
+### 2.6. Giao diện hàm dự kiến và ngoại lệ
 
 | Hàm | Đầu vào | Đầu ra | Lỗi |
 | :--- | :--- | :--- | :--- |

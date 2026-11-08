@@ -106,7 +106,7 @@ Tag TensorBoard: `Loss/train`, `Loss/val`, `Accuracy/train`, `Accuracy/val`, `LR
 | So sánh nghiêm ngặt khi chọn best | Kết quả xác định, tránh ghi đè không cần thiết |
 | Ghi LR theo từng nhóm tham số | Fine-Tuning dùng hai LR khác nhau, cần quan sát cả hai |
 
-## 6. API
+## 6. Giao diện hàm và ngoại lệ
 
 | Hàm | Đầu vào chính | Đầu ra | Lỗi |
 | :--- | :--- | :--- | :--- |

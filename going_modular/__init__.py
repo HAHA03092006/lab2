@@ -23,7 +23,6 @@ from .model_builder import (
     build_model,
     count_params,
     describe_model,
-    format_model_summary,
     get_param_groups,
     get_transforms,
     set_train_mode,
@@ -76,6 +75,11 @@ from .utils import (
     artifacts_exist,
     save_checkpoint,
     load_checkpoint,
+    make_session_id,
+    make_eval_id,
+    make_eval_output_dir,
+    make_session_log_dir,
+    file_sha256,
 )
 
 __all__ = [
