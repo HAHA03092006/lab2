@@ -20,11 +20,11 @@ Cả hai mạng được nạp từ `torchvision.models` với trọng số `IMA
 | :--- | :--- | :--- |
 | Họ mạng | Tuần tự cổ điển | Residual (liên kết tắt) |
 | Backbone | 5 khối conv (`features`), mỗi khối kết thúc bằng `MaxPool2d` | `conv1`, `bn1`, `layer1`–`layer4` |
-| Head gốc → head mới | `classifier[6]`: 4096→1000 thành 4096→10 | `fc`: 512→1000 thành 512→10 |
+| Head gốc → head mới | `classifier` → `Identity`, head mới `Linear(25088→10)` | `fc` → `Identity`, head mới `Linear(512→10)` |
 | Có BatchNorm | Không | Có |
 | Số khối có thể unfreeze | 5 | 4 |
-| Tổng tham số (10 lớp) | 134.301.514 | 11.181.642 |
-| Trainable khi Feature Extraction | 40.970 | 5.130 |
+| Tổng tham số (10 lớp) | ~14.965.578 | 11.181.642 |
+| Trainable khi Feature Extraction | ~250.890 | 5.130 |
 
 ```text
 Ảnh (B,3,224,224) ──► Backbone (frozen hoặc trainable) ──► Head mới ──► Logits (B,10)
@@ -60,7 +60,7 @@ Nếu `dropout > 0`, head mới là `Dropout → Linear`; ngược lại là `Li
 
 - `num_classes = 10`.
 - Ghi cụ thể `IMAGENET1K_V1`; **không** dùng `DEFAULT` (alias có thể đổi giữa các phiên bản) và **không** dùng `pretrained=True` (đã deprecated).
-- Trả về model torchvision trực tiếp, không bọc wrapper, để key `state_dict` không đổi.
+- Trả về `MyModel` (wrapper `nn.Module` quanh backbone torchvision), key `state_dict` có prefix `backbone.` và `head.`
 - Module không train, không đọc dữ liệu, không lưu/nạp file.
 
 ## 5. Thiết kế
@@ -95,18 +95,19 @@ Huấn luyện toàn bộ mô hình: `freeze_backbone=False`, `unfreeze_last_n=0
 
 ```text
 1. validate(cfg)
-2. nạp kiến trúc torchvision với weights enum cụ thể
-3. nếu freeze_backbone: requires_grad=False cho mọi tham số
-4. thay head (in_features đọc từ head cũ)
-5. nếu unfreeze_last_n > 0: mở khóa N khối cuối
+2. tạo MyModel: nạp backbone torchvision, thay fc/classifier bằng Identity,
+   gán head mới (Linear hoặc Dropout+Linear)
+3. nếu freeze_backbone: requires_grad=False cho mọi tham số backbone
+4. nếu unfreeze_last_n > 0: mở khóa N khối cuối của backbone
 ```
 
 ### 5.4. Quyết định thiết kế
 
 | Quyết định | Lý do |
 | :--- | :--- |
+| Wrapper `MyModel` quanh backbone | Dễ thuyết trình, cấu trúc rõ ràng: `self.backbone` + `self.head`, `forward` tuỳ chỉnh |
 | Freeze **trước**, thay head **sau** | Layer mới mặc định trainable; nếu đảo, head bị đóng băng theo và optimizer có thể nhận danh sách rỗng |
-| Đọc `in_features` từ head cũ | Không ghi cứng, tránh sai khi đổi biến thể mạng |
+| Tính `in_features` động qua dummy forward (VGG16) | VGG16 sau `classifier=Identity` ra 25088 (không phải 4096), tránh hardcode sai |
 | Registry chỉ lưu phần khác nhau (`get_head`, `set_head`, `blocks`) | Thêm kiến trúc không cần sửa logic chung |
 | `set_train_mode` thay `model.train()` | `requires_grad=False` **không** ngăn BN cập nhật running mean/var, làm hỏng thống kê ImageNet |
 | Transform nhận `weights` riêng, có thể khác `cfg.weights` | Dựng model với `weights=None` (nạp checkpoint) vẫn lấy được tiền xử lý đúng |
@@ -131,10 +132,10 @@ Không tạo nhóm rỗng, không trùng, không sót.
 
 | Hàm | Đầu vào | Đầu ra | Lỗi |
 | :--- | :--- | :--- | :--- |
-| `build_model(cfg)` | `ModelConfig` | `nn.Module` | `ValueError` nếu cấu hình sai |
+| `build_model(cfg)` | `ModelConfig` | `MyModel` (`nn.Module`) | `ValueError` nếu cấu hình sai |
+| `MyModel(arch, num_classes, weights, freeze_backbone, dropout, freeze_bn_stats)` | tham số kiến trúc | `nn.Module` | `ValueError` nếu arch không hỗ trợ |
 | `get_transforms(cfg, weights=None)` | `ModelConfig`, tên weights | transform | `ValueError` nếu không xác định được weights |
 | `count_params(model)` | `nn.Module` | `{total, trainable, frozen}` | — |
-| `describe_model(model, cfg=None)` | `nn.Module` | `str` tóm tắt | — |
 | `set_train_mode(model, cfg)` | `nn.Module`, `ModelConfig` | `None` | — |
 | `get_param_groups(model, cfg, lr_head, lr_backbone)` | như tên | `list[dict]` | — |
 | `ModelConfig.to_dict()` / `from_dict(d)` | | `dict` / `ModelConfig` | `TypeError` nếu `d` có khóa lạ |
@@ -156,7 +157,7 @@ Không tạo nhóm rỗng, không trùng, không sót.
 | Mã | Kiểm tra | Kỳ vọng | Yêu cầu |
 | :--- | :--- | :--- | :--- |
 | T1, T2, T2b | Shape đầu ra, vị trí head, dropout | Logits `(B,10)`; head đúng `out_features`; `Dropout` trước `Linear` | FR-1, FR-2 |
-| T3, T4 | Feature Extraction | Chỉ head trainable; trainable = 5.130 (ResNet-18), 40.970 (VGG16) | FR-3, FR-5 |
+| T3, T4 | Feature Extraction | Chỉ head trainable; trainable = 5.130 (ResNet-18), ~250.890 (VGG16) | FR-3, FR-5 |
 | T5, T5b, T5c | Unfreeze N khối, huấn luyện toàn bộ | N khối cuối trainable; trainable tăng; `freeze_backbone=False` thì tất cả trainable | FR-4 |
 | T6–T8b | Cấu hình sai | `ValueError` | FR-4 |
 | T9–T10c | BatchNorm | BN frozen ở eval; BN của khối mở khóa ở train; `running_mean` không đổi sau forward | FR-6 |

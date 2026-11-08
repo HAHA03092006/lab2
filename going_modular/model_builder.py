@@ -2,14 +2,75 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+import torch
 from torch import nn
 from torchvision import models
 from torchvision.models import VGG16_Weights, ResNet18_Weights
 
 
-def build_model(cfg: ModelConfig) -> nn.Module:
-    """Xây dựng mô hình torchvision trực tiếp từ ModelConfig (không wrapper)."""
-    return _build_model_from_config(cfg)
+# ---------------------------------------------------------------------------
+# Wrapper model: backbone torchvision + head tùy chỉnh
+# ---------------------------------------------------------------------------
+
+class MyModel(nn.Module):
+    """Wrapper quanh backbone torchvision (ResNet-18 / VGG16) với head thay thế.
+
+    Cấu trúc:
+      self.backbone  — kiến trúc torchvision gốc, đã bỏ lớp đầu ra (fc / classifier).
+      self.head      — Linear (hoặc Dropout+Linear) đầu ra cho NUM_CLASSES.
+    forward: x → backbone(x) → head → logits.
+    """
+
+    def __init__(
+        self,
+        arch: str,
+        num_classes: int,
+        weights: str | None = "IMAGENET1K_V1",
+        freeze_backbone: bool = True,
+        dropout: float = 0.0,
+        freeze_bn_stats: bool = True,
+    ):
+        super().__init__()
+        self.arch = arch
+        self.num_classes = num_classes
+        self.freeze_bn_stats = freeze_bn_stats
+
+        # --- Nạp backbone torchvision ---
+        if arch == "resnet18":
+            backbone = models.resnet18(weights=_resolve_weights(arch, weights))
+            in_features = backbone.fc.in_features
+            backbone.fc = nn.Identity()  # bỏ lớp gốc 1000 lớp
+        elif arch == "vgg16":
+            backbone = models.vgg16(weights=_resolve_weights(arch, weights))
+            # Tính output dim của backbone sau features+avgpool+flatten (trước classifier)
+            with torch.no_grad():
+                _dummy = torch.randn(1, 3, 224, 224)
+                _feat = backbone.features(_dummy)
+                _feat = backbone.avgpool(_feat)
+                _feat = torch.flatten(_feat, 1)
+                in_features = int(_feat.shape[1])
+            backbone.classifier = nn.Identity()  # bỏ lớp gốc 1000 lớp
+        else:
+            raise ValueError(f"Kiến trúc không hỗ trợ: '{arch}'.")
+
+        self.backbone = backbone
+
+        # --- Head mới (luôn trainable) ---
+        if dropout > 0:
+            self.head = nn.Sequential(
+                nn.Dropout(dropout),
+                nn.Linear(in_features, num_classes),
+            )
+        else:
+            self.head = nn.Linear(in_features, num_classes)
+
+        # --- Đóng băng backbone nếu yêu cầu ---
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.backbone(x))
 
 
 # ---------------------------------------------------------------------------
@@ -45,14 +106,14 @@ class ModelConfig:
 
 
 # ---------------------------------------------------------------------------
-# Architecture registry
+# Architecture registry (dành cho get_param_groups / unfreeze_last_n)
 # ---------------------------------------------------------------------------
 
 def _vgg16_conv_blocks(model: nn.Module) -> list[nn.Sequential]:
-    """Chia VGG16 features thành 5 khối conv, mỗi khối kết thúc bằng MaxPool2d."""
+    """Chia VGG16 backbone.features thành 5 khối conv, mỗi khối kết thúc bằng MaxPool2d."""
     blocks: list[nn.Sequential] = []
     current: list[nn.Module] = []
-    for module in model.features:
+    for module in model.backbone.features:
         current.append(module)
         if isinstance(module, nn.MaxPool2d):
             blocks.append(nn.Sequential(*current))
@@ -62,14 +123,14 @@ def _vgg16_conv_blocks(model: nn.Module) -> list[nn.Sequential]:
 
 ARCH_SPECS: dict[str, dict] = {
     "resnet18": {
-        "get_head": lambda m: m.fc,
-        "set_head": lambda m, h: setattr(m, "fc", h),
-        "blocks": lambda m: [m.layer1, m.layer2, m.layer3, m.layer4],
+        "get_head": lambda m: m.head,
+        "set_head": lambda m, h: setattr(m, "head", h),
+        "blocks": lambda m: [m.backbone.layer1, m.backbone.layer2, m.backbone.layer3, m.backbone.layer4],
         "num_blocks": 4,
     },
     "vgg16": {
-        "get_head": lambda m: m.classifier[6],
-        "set_head": lambda m, h: setattr(m.classifier, "6", h),
+        "get_head": lambda m: m.head,
+        "set_head": lambda m, h: setattr(m, "head", h),
         "blocks": _vgg16_conv_blocks,
         "num_blocks": 5,
     },
@@ -125,51 +186,29 @@ def _validate(cfg: ModelConfig) -> None:
         )
 
 
-def _load_torchvision(arch: str, weights_name: str | None) -> nn.Module:
-    """Nạp kiến trúc torchvision với weights enum cụ thể (không dùng pretrained=True/DEFAULT)."""
-    if arch == "resnet18":
-        return models.resnet18(weights=_resolve_weights(arch, weights_name))
-    if arch == "vgg16":
-        return models.vgg16(weights=_resolve_weights(arch, weights_name))
-    raise ValueError(f"Kiến trúc không hỗ trợ: '{arch}'.")
-
-
 # ---------------------------------------------------------------------------
 # build_model (new API)
 # ---------------------------------------------------------------------------
 
-def _build_model_from_config(cfg: ModelConfig) -> nn.Module:
-    """Xây dựng mô hình từ ModelConfig theo hợp đồng thiết kế.
+def build_model(cfg: ModelConfig) -> nn.Module:
+    """Xây dựng MyModel từ ModelConfig (wrapper quanh torchvision backbone).
 
-    Thứ tự: validate → nạp kiến trúc → freeze backbone → thay head → unfreeze N khối cuối.
+    Thứ tự: validate → nạp backbone → thay head → đóng băng backbone → unfreeze N khối cuối.
     """
     _validate(cfg)
 
-    model = _load_torchvision(cfg.arch, cfg.weights)
+    model = MyModel(
+        arch=cfg.arch,
+        num_classes=cfg.num_classes,
+        weights=cfg.weights,
+        freeze_backbone=cfg.freeze_backbone,
+        dropout=cfg.dropout,
+        freeze_bn_stats=cfg.freeze_bn_stats,
+    )
 
-    spec = ARCH_SPECS[cfg.arch]
-
-    # Bước 1: đóng băng toàn bộ backbone nếu được yêu cầu.
-    if cfg.freeze_backbone:
-        for param in model.parameters():
-            param.requires_grad = False
-
-    # Bước 2: thay head (mới tạo mặc định requires_grad=True).
-    old_head = spec["get_head"](model)
-    in_features = old_head.in_features
-
-    if cfg.dropout > 0:
-        new_head = nn.Sequential(
-            nn.Dropout(cfg.dropout),
-            nn.Linear(in_features, cfg.num_classes),
-        )
-    else:
-        new_head = nn.Linear(in_features, cfg.num_classes)
-
-    spec["set_head"](model, new_head)
-
-    # Bước 3: mở khóa N khối cuối (Fine-Tuning).
+    # Mở khóa N khối cuối backbone (Fine-Tuning).
     if cfg.unfreeze_last_n > 0:
+        spec = ARCH_SPECS[cfg.arch]
         blocks = spec["blocks"](model)
         for block in blocks[-cfg.unfreeze_last_n:]:
             for param in block.parameters():
@@ -220,8 +259,7 @@ def set_train_mode(model: nn.Module, cfg: ModelConfig) -> None:
 # ---------------------------------------------------------------------------
 
 def _head_param_ids(model: nn.Module, cfg: ModelConfig) -> set[int]:
-    head = ARCH_SPECS[cfg.arch]["get_head"](model)
-    return {id(p) for p in head.parameters()}
+    return {id(p) for p in model.head.parameters()}
 
 
 def get_param_groups(
@@ -267,28 +305,3 @@ def count_params(model: nn.Module) -> dict:
     total = sum(p.numel() for p in model.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return {"total": total, "trainable": trainable, "frozen": total - trainable}
-
-
-# ---------------------------------------------------------------------------
-# Model summary
-# ---------------------------------------------------------------------------
-
-def describe_model(model: nn.Module, cfg: ModelConfig | None = None) -> str:
-    """Tóm tắt kiến trúc: head, tổng/trainable/frozen parameters.
-
-    Không phụ thuộc torchinfo, không tải pretrained weights chỉ để mô tả.
-    """
-    stats = count_params(model)
-    lines = [
-        f"Model: {model.__class__.__name__}",
-        f"Total parameters: {stats['total']:,}",
-        f"Trainable parameters: {stats['trainable']:,}",
-        f"Frozen parameters: {stats['frozen']:,}",
-    ]
-    if cfg is not None:
-        lines.insert(1, f"Architecture: {cfg.arch}")
-        lines.insert(2, f"Classes: {cfg.num_classes}")
-    return "\n".join(lines)
-
-
-

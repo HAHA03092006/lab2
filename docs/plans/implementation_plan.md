@@ -70,7 +70,7 @@ Ba runs `v2` mỗi run chỉ thay đúng một yếu tố so với `v1_resnet18`
 
 ### Phase 2 — `model_builder.py` và `test_model_builder.py`
 - Hiện thực `ModelConfig` dataclass (frozen), registry `ARCH_SPECS` cho VGG16/ResNet-18, logic thay head, freeze/unfreeze (`unfreeze_last_n`), `set_train_mode` giữ BatchNorm eval, tiền xử lý `get_transforms` và `get_param_groups`.
-- Bổ sung `count_params` (trả dict `{total, trainable, frozen}`) và `describe_model` cho yêu cầu khảo sát kiến trúc Step 3 (thay thế phụ thuộc `torchinfo`).
+- Bổ sung `count_params` (trả dict `{total, trainable, frozen}`) cho yêu cầu khảo sát kiến trúc Step 3 (khảo sát kiến trúc qua `torchinfo.summary` trực tiếp trong notebook).
 - Kiểm tra cấu hình `weights=None` dùng được để dựng lại kiến trúc khi nạp checkpoint, đồng thời transform vẫn lấy riêng từ `data.transform_weights`.
 - Triển khai bộ test `tests/test_model_builder.py` bám sát đặc tả `docs/define&designt/tests/02_test_model_builder.md`.
 - Cập nhật các export liên quan đến model trong `going_modular/__init__.py`.
@@ -112,7 +112,7 @@ Ba runs `v2` mỗi run chỉ thay đúng một yếu tố so với `v1_resnet18`
 ### Phase 7 — Tích hợp Notebook & Hoàn thiện Package
 - Rà soát và sửa các lỗi gọi hàm trong `notebooks/pretrained_models.ipynb`:
   - Sửa cell phân tích ma trận nhầm lẫn: chuyển sang gọi `compute_confusion_matrix(y_true=y_true, y_pred=y_pred, num_classes=10)` theo đúng tham số keyword-only và thứ tự nhãn.
-  - Thay thế việc gọi `torchinfo.summary()` bằng `describe_model()`.
+  - Thay thế việc gọi `torchinfo.summary()` bằng `torchinfo.summary()` trực tiếp trong notebook cell.
   - Thay thế các lời gọi hàm legacy (`eval_model`, `print_train_time`) bằng pipeline đánh giá và tính chi phí chuẩn từ `engine` và `evaluate`.
 - Tích hợp `RUN_MODE="train"` và `RUN_MODE="reuse"`, kết nối Google Drive / Colab nếu cần, quản lý thư mục artifacts riêng biệt cho từng run.
 - Thêm lựa chọn `RUN_ID` để chạy đúng một trong sáu runs mỗi lần; trong chế độ train, thêm `RESUME` để phân biệt bắt đầu mới với tiếp tục run dở. Chế độ reuse chỉ nạp run đã hoàn thành và không được tự chuyển sang train.

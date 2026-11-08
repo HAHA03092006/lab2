@@ -41,7 +41,7 @@ Lab 2 yêu cầu xây dựng quy trình **Transfer Learning** hoàn chỉnh trê
 - `set_train_mode(model, cfg)` để giữ BN frozen ở eval
 - `get_param_groups(model, cfg, lr_head, lr_backbone)` cho optimizer 2 giai đoạn
 - `count_params(model) -> {total, trainable, frozen}`
-- `describe_model(model)` cho Step 3
+- Kiến trúc xem qua `torchinfo.summary()` trực tiếp trong notebook (không qua `describe_model`)
 - `unfreeze_last_n` logic cho Fine-Tuning
 - Validation cấu hình: kiến trúc lạ, dropout, kết hợp cờ mâu thuẫn
 
@@ -58,7 +58,7 @@ Lab 2 yêu cầu xây dựng quy trình **Transfer Learning** hoàn chỉnh trê
 | 7 | Không có `get_param_groups` để tách learning rate cho head/backbone | ❌ Thiếu API cho Fine-Tuning theo thiết kế |
 | 8 | Không có cấu hình/logic `unfreeze_last_n` | ❌ Thiếu API; notebook hiện tự mở `layer4` và `fc` cho ResNet-18 |
 | 9 | Không có `count_params` tổng hợp (chỉ có `count_trainable_params` và `count_total_params`) | ⚠️ Chức năng đếm cơ bản có; API tổng hợp `total/trainable/frozen` chưa có |
-| 10 | Không có `describe_model` / `format_model_summary` | ❌ Thiếu tiện ích khảo sát kiến trúc theo thiết kế |
+| 10 | Không có `format_model_summary` | ⚠️ Kiến trúc xem qua `torchinfo.summary()` trực tiếp trong notebook |
 | 11 | Không có validation cho `dropout`, `unfreeze_last_n` và các tổ hợp cấu hình | ❌ Các kiểm tra này chưa áp dụng được vì schema cấu hình tương ứng chưa có |
 | 12 | Không hỗ trợ `ModelConfig.to_dict()` / `from_dict()` | ❌ Thiếu serialization round-trip cấu hình mô hình |
 | 13 | ResNet-18 freeze backbone bằng cách bỏ qua tên tham số chứa `"fc"` rồi thay `fc` | ℹ️ Khác thứ tự triển khai đề xuất; với feature extraction, kết quả freeze backbone và head mới trainable là tương đương, không phải lỗi hành vi được chứng minh |
@@ -226,7 +226,7 @@ Lab 2 yêu cầu xây dựng quy trình **Transfer Learning** hoàn chỉnh trê
 ```python
 # Phải có theo đặc tả
 ModelConfig, build_model, get_transforms, count_params,
-describe_model, set_train_mode, get_param_groups,
+set_train_mode, get_param_groups,
 create_train_val_test_dataloaders, train, evaluate_step,
 set_seed, get_device, run_inference, evaluate_predictions
 ```
@@ -243,7 +243,7 @@ Vì vậy, thiếu các hàm flat export ở `__init__.py` chưa chặn notebook
 
 | API theo đặc tả | Hiện trạng trong package | Hệ quả |
 | :--- | :--- | :--- |
-| `ModelConfig`, `get_transforms`, `describe_model`, `set_train_mode`, `get_param_groups` | Chưa export; một số API cũng chưa hiện diện trong module hiện tại | Không dùng được theo API mục tiêu; cần triển khai module trước khi export nếu chưa có implementation |
+| `ModelConfig`, `get_transforms`, `count_params`, `set_train_mode`, `get_param_groups` | Chưa export; một số API cũng chưa hiện diện trong module hiện tại | Không dùng được theo API mục tiêu; cần triển khai module trước khi export nếu chưa có implementation |
 | `build_model` | Đã export, nhưng implementation/signature hiện tại chưa theo API config-driven được thiết kế | Tên import được; hành vi/API vẫn cần đối chiếu với `model_builder.py` |
 | `count_params` | Thay bằng hai export `count_trainable_params` và `count_total_params` | Cách gọi khác thiết kế; chưa tự thân làm hỏng workflow hiện tại |
 | `create_train_val_test_dataloaders`, `train`, `evaluate_step`, `set_seed`, `get_device` | Đã export | Có sẵn ở cấp package, nhưng mức tương thích chữ ký/behavior thuộc từng module |
@@ -330,7 +330,7 @@ graph LR
 ### Phase 2 — `model_builder.py` ← VIẾT LẠI
 - Tạo `ModelConfig` dataclass
 - Xây registry `ARCH_SPECS` cho VGG16 + ResNet-18
-- Implement `build_model(cfg)`, `get_transforms`, `set_train_mode`, `get_param_groups`, `count_params`, `describe_model`
+- Implement `build_model(cfg)`, `get_transforms`, `set_train_mode`, `get_param_groups`, `count_params`
 - Viết `tests/test_model_builder.py` (T1-T7)
 
 ### Phase 3 — `data_setup.py` ← SỬA NHỎ

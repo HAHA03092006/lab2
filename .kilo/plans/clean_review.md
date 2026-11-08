@@ -86,8 +86,7 @@ Theo `00_lab2_description.md` mục 2.8.6, `__all__` phải chứa chính xác:
 2. `build_model`
 3. `get_transforms`
 4. `count_params`
-5. `describe_model`
-6. `set_train_mode`
+5. `set_train_mode`
 7. `get_param_groups`
 8. `create_train_val_test_dataloaders`
 9. `train`

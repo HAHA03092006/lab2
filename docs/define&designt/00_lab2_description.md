@@ -161,7 +161,7 @@ File `.pth` phát hành ngoài Git (GitHub Release hoặc Drive); `README.md` gh
 | :--- | :--- | :--- |
 | 1 | FR-1 | `requirements.txt` |
 | 2 | FR-2 | `build_model` (`02`) |
-| 3 | FR-3 | `count_params`, `describe_model` (`02`) |
+| 3 | FR-3 | `count_params` (`02`) |
 | 4 | FR-4 | `build_model`, `unfreeze_last_n` (`02`) |
 | 5 | FR-5 | `data_setup.py` (`01`) |
 | 6 | FR-6, FR-7 | `engine.py` (`03`) |

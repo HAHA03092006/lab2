@@ -39,7 +39,7 @@ Tích hợp `notebooks/pretrained_models.ipynb` với các API module đã hoàn
 
 ## 4. Luồng train và resume an toàn
 
-- [x] Dựng model bằng `ModelConfig`/`build_model`; hiển thị kiến trúc bằng `describe_model` thay cho `torchinfo.summary`.
+- [x] Dựng model bằng `ModelConfig`/`build_model`; hiển thị kiến trúc bằng `torchinfo.summary()` trực tiếp trong notebook.
 - [x] Gọi `engine.train` qua API chuẩn, truyền `save_path`, `checkpoint_dir`, `resume`, `expected_phase_config`, `start_epoch` và callback train-mode phù hợp.
 - [x] Lưu `last_checkpoint.pth` cùng history sau mỗi epoch hoàn tất bằng các API persistence hiện có; lỗi đọc/ghi phải dừng run và được báo rõ.
 - [x] Resume yêu cầu checkpoint tồn tại, đọc được, khớp phase config và chưa hoàn tất mục tiêu epochs; không tự chuyển thành fresh train.
@@ -67,7 +67,7 @@ Tích hợp `notebooks/pretrained_models.ipynb` với các API module đã hoàn
 ## 7. Hoàn thiện Notebook và package contract
 
 - [x] Thay các cell V0/V1/fine-tune rời thành luồng điều phối theo một `RUN_ID` và API module chuẩn.
-- [x] Thay `torchinfo.summary()` bằng `describe_model`; rà soát cả hướng dẫn/cell setup có nhắc đến `torchinfo`.
+- [x] Thay `torchinfo.summary()` bằng `torchinfo.summary()` trực tiếp trong notebook; rà soát cả hướng dẫn/cell setup có nhắc đến `torchinfo`.
 - [x] Chỉ gỡ `torchinfo` khỏi `requirements.txt` sau khi tìm toàn repository xác nhận không còn import/call/documentation dependency.
 - [x] Sửa các lỗi call site đã biết, đặc biệt confusion matrix keyword-only và thứ tự labels.
 - [x] Bổ sung smoke test package kiểm tra chính xác `__all__` bằng 14 symbols theo `00`; cập nhật các test/import bị ảnh hưởng.

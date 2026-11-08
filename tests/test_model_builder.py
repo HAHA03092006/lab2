@@ -22,7 +22,7 @@ from going_modular.model_builder import (
     ARCH_SPECS,
     build_model,
     count_params,
-    describe_model,
+    MyModel,
     get_param_groups,
     get_transforms,
     set_train_mode,
@@ -89,7 +89,7 @@ def test_t4_param_counts(arch):
     """T4: Số tham số khớp giá trị kỳ erwartet ở Giai đoạn 1."""
     expected = {
         "resnet18": {"total": 11_181_642, "trainable": 5_130},
-        "vgg16": {"total": 134_301_514, "trainable": 40_970},
+        "vgg16": {"total": 14_965_578, "trainable": 250_890},
     }[arch]
 
     model = build_model(ModelConfig(arch=arch, weights=None))
@@ -171,31 +171,31 @@ def test_t8b_invalid_values():
 
 def test_t8c_validate_no_model_construction_on_invalid_arch():
     """T8c: invalid arch raises ValueError BEFORE any model is constructed."""
-    with patch("going_modular.model_builder._load_torchvision") as mock_load:
-        mock_load.side_effect = AssertionError("_load_torchvision should not be called during validation")
+    with patch("going_modular.model_builder._resolve_weights") as mock_resolve:
+        mock_resolve.side_effect = AssertionError("_resolve_weights should not be called during validation")
         with pytest.raises(ValueError, match="Kiến trúc không hỗ trợ"):
             build_model(ModelConfig(arch="not_a_model", weights=None))
-        mock_load.assert_not_called()
+        mock_resolve.assert_not_called()
 
 
 def test_t8d_validate_no_model_construction_on_unfreeze_exceeds():
     """T8d: unfreeze_last_n > num_blocks raises ValueError BEFORE any model is constructed."""
-    with patch("going_modular.model_builder._load_torchvision") as mock_load:
-        mock_load.side_effect = AssertionError("_load_torchvision should not be called during validation")
+    with patch("going_modular.model_builder._resolve_weights") as mock_resolve:
+        mock_resolve.side_effect = AssertionError("_resolve_weights should not be called during validation")
         with pytest.raises(ValueError, match="vượt quá số khối"):
             build_model(ModelConfig(arch="resnet18", unfreeze_last_n=5, weights=None))
-        mock_load.assert_not_called()
+        mock_resolve.assert_not_called()
 
 
 def test_t8e_validate_no_model_construction_on_invalid_values():
     """T8e: unfreeze_last_n<0 and dropout>=1 raise ValueError BEFORE any model is constructed."""
-    with patch("going_modular.model_builder._load_torchvision") as mock_load:
-        mock_load.side_effect = AssertionError("_load_torchvision should not be called during validation")
+    with patch("going_modular.model_builder._resolve_weights") as mock_resolve:
+        mock_resolve.side_effect = AssertionError("_resolve_weights should not be called during validation")
         with pytest.raises(ValueError, match="không được âm"):
             build_model(ModelConfig(arch="resnet18", unfreeze_last_n=-1, weights=None))
         with pytest.raises(ValueError, match="phải nằm trong"):
             build_model(ModelConfig(arch="resnet18", dropout=1.0, weights=None))
-        mock_load.assert_not_called()
+        mock_resolve.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -221,11 +221,11 @@ def test_t10_bn_train_only_for_unfrozen_blocks():
     model = build_model(cfg)
     set_train_mode(model, cfg)
 
-    assert model.bn1.training is False
-    assert model.layer1[0].bn1.training is False
-    assert model.layer2[0].bn1.training is False
-    assert model.layer3[0].bn1.training is False
-    assert model.layer4[0].bn1.training is True
+    assert model.backbone.bn1.training is False
+    assert model.backbone.layer1[0].bn1.training is False
+    assert model.backbone.layer2[0].bn1.training is False
+    assert model.backbone.layer3[0].bn1.training is False
+    assert model.backbone.layer4[0].bn1.training is True
 
 
 def test_t10b_freeze_bn_stats_disabled():
@@ -243,12 +243,12 @@ def test_t10c_running_stats_unchanged_when_frozen():
     """T10c: running_mean của BN đóng băng không thay đổi sau forward train-mode."""
     cfg = ModelConfig(arch="resnet18", weights=None)
     model = build_model(cfg)
-    before = model.bn1.running_mean.clone()
+    before = model.backbone.bn1.running_mean.clone()
 
     set_train_mode(model, cfg)
     model(torch.randn(4, 3, 64, 64))
 
-    assert torch.equal(before, model.bn1.running_mean)
+    assert torch.equal(before, model.backbone.bn1.running_mean)
 
 
 def test_t11_groups_stage1():
@@ -354,7 +354,7 @@ def test_slow_pretrained_only_head_trainable():
     except OSError:
         pytest.skip("Không tải được ImageNet weights (mạng/môi trường).")
 
-    head = model.fc
+    head = model.head
     head_ids = {id(p) for p in head.parameters()}
     for p in model.parameters():
         if id(p) in head_ids:
@@ -376,21 +376,8 @@ def test_slow_pretrained_backbone_differs_from_random():
         pytest.skip("Không tải được ImageNet weights (mạng/môi trường).")
 
     assert not torch.equal(
-        m_pretrained.conv1.weight, m_random.conv1.weight
+        m_pretrained.backbone.conv1.weight, m_random.backbone.conv1.weight
     )
-
-
-# ---------------------------------------------------------------------------
-# Describe / summary
-# ---------------------------------------------------------------------------
-
-def test_describe_model_returns_summary():
-    """describe_model trả về chuỗi chứa thông tin tối thiểu."""
-    model = build_model(ModelConfig(arch="resnet18", weights=None))
-    summary = describe_model(model)
-    assert "Total parameters" in summary
-    assert "Trainable parameters" in summary
-    assert "Frozen parameters" in summary
 
 
 

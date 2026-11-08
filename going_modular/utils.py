@@ -1,11 +1,4 @@
-"""
-Contains utility functions: seeding, device selection, metrics,
-timing, and saving/loading PyTorch models.
 
-Phase 4 extensions: deterministic seeding, torch.device return,
-TensorBoard writer, atomic JSON I/O, artifacts resume/checkpoint,
-safe weights_only loading, and environment info.
-"""
 from __future__ import annotations
 
 import json
@@ -55,17 +48,7 @@ def set_seed(seed: int = 42, deterministic: bool = True) -> None:
 
 
 def get_device(prefer: Optional[str] = None) -> torch.device:
-    """Returns a ``torch.device`` for the requested or best available backend.
 
-    Args:
-        prefer: Optional backend name ("cuda", "mps", "cpu"). If None, selects
-            cuda, then mps, then cpu. Raises ValueError if the requested
-            backend is not available.
-
-    Raises:
-        ValueError: If ``prefer`` is invalid or the requested device is not
-            available.
-    """
     if prefer is None:
         if torch.cuda.is_available():
             return torch.device("cuda")
